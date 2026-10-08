@@ -36,12 +36,23 @@ print("=================================")
 # SUPABASE
 # =========================================================
 
-supabase = create_client(
-    SUPABASE_URL,
-    SUPABASE_SECRET_KEY
-)
+try:
 
-print("Supabase client created.")
+    supabase = create_client(
+        SUPABASE_URL,
+        SUPABASE_SECRET_KEY
+    )
+
+    print("Supabase client created successfully.")
+
+except Exception as e:
+
+    print("=================================")
+    print("SUPABASE CLIENT ERROR:")
+    print(repr(e))
+    print("=================================")
+
+    raise
 
 
 # =========================================================
@@ -76,6 +87,10 @@ def run_flask():
 
 def get_user(telegram_id):
 
+    print("=================================")
+    print("GET USER")
+    print("Telegram ID:", telegram_id)
+
     try:
 
         result = (
@@ -87,52 +102,87 @@ def get_user(telegram_id):
             .execute()
         )
 
+        print("GET USER RESULT:", result)
+
         if result.data:
+
+            print("USER FOUND:", result.data[0])
+
             return result.data[0]
+
+        print("USER NOT FOUND")
 
     except Exception as e:
 
-        print("GET USER ERROR:", e)
+        print("=================================")
+        print("GET USER ERROR:")
+        print(repr(e))
+        print("=================================")
 
     return None
 
 
 def create_user(update):
 
+    print("=================================")
+    print("CREATE USER")
+    print("=================================")
+
     if not update.effective_user:
+
+        print("CREATE USER ERROR: No Telegram user")
+
         return None
 
     telegram_id = update.effective_user.id
     username = update.effective_user.username
 
+    print("Telegram ID:", telegram_id)
+    print("Username:", username)
+
     # Check if user already exists
     existing = get_user(telegram_id)
 
     if existing:
+
+        print("User already exists.")
+
         return existing
 
     try:
 
+        data = {
+            "telegram_id": telegram_id,
+            "username": username,
+            "balance": 0
+        }
+
+        print("INSERT DATA:", data)
+
         result = (
             supabase
             .table("users")
-            .insert({
-                "telegram_id": telegram_id,
-                "username": username,
-                "balance": 0
-            })
+            .insert(data)
             .execute()
         )
 
+        print("CREATE USER RESULT:", result)
+
         if result.data:
 
-            print("NEW USER CREATED:", telegram_id)
+            print("=================================")
+            print("NEW USER CREATED")
+            print("Telegram ID:", telegram_id)
+            print("=================================")
 
             return result.data[0]
 
     except Exception as e:
 
-        print("CREATE USER ERROR:", e)
+        print("=================================")
+        print("CREATE USER ERROR:")
+        print(repr(e))
+        print("=================================")
 
     return None
 
@@ -156,6 +206,7 @@ async def start(
     balance = 0
 
     if user:
+
         balance = user.get("balance", 0) or 0
 
     await update.message.reply_text(
@@ -187,6 +238,7 @@ async def balance(
     user = get_user(telegram_id)
 
     if not user:
+
         user = create_user(update)
 
     if user:
@@ -211,19 +263,31 @@ async def task(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
+    print("=================================")
     print("RECEIVED /TASK")
+    print("=================================")
 
     if not update.message or not update.effective_user:
         return
 
     telegram_id = update.effective_user.id
 
+    print("TASK TELEGRAM ID:", telegram_id)
+
     user = get_user(telegram_id)
 
     if not user:
+
+        print("TASK: User not found. Trying to create user.")
+
         user = create_user(update)
 
     if not user:
+
+        print("=================================")
+        print("TASK ERROR: USER ACCOUNT COULD NOT BE FOUND OR CREATED")
+        print("Telegram ID:", telegram_id)
+        print("=================================")
 
         await update.message.reply_text(
             "⚠️ Account error.\n"
@@ -231,6 +295,8 @@ async def task(
         )
 
         return
+
+    print("TASK: User account OK")
 
     # Generate simple verification question
     a = random.randint(1, 20)
@@ -240,6 +306,15 @@ async def task(
 
     # Store answer for this Telegram user
     context.user_data["answer"] = correct_answer
+
+    print(
+        "TASK CREATED:",
+        a,
+        "+",
+        b,
+        "=",
+        correct_answer
+    )
 
     await update.message.reply_text(
         "🧩 Verification Task\n\n"
@@ -307,12 +382,19 @@ async def answer(
 
     telegram_id = update.effective_user.id
 
+    print("CORRECT ANSWER FROM:", telegram_id)
+
     user = get_user(telegram_id)
 
     if not user:
+
+        print("ANSWER: User not found. Trying to create user.")
+
         user = create_user(update)
 
     if not user:
+
+        print("ANSWER ERROR: Could not find/create account.")
 
         await update.message.reply_text(
             "⚠️ Account error."
@@ -332,6 +414,13 @@ async def answer(
 
     new_balance = old_balance + 1
 
+    print(
+        "OLD BALANCE:",
+        old_balance,
+        "NEW BALANCE:",
+        new_balance
+    )
+
     # Update Supabase balance
     try:
 
@@ -345,6 +434,8 @@ async def answer(
             .execute()
         )
 
+        print("BALANCE UPDATE RESULT:", result)
+
         print(
             "BALANCE UPDATED:",
             telegram_id,
@@ -353,7 +444,10 @@ async def answer(
 
     except Exception as e:
 
-        print("BALANCE UPDATE ERROR:", e)
+        print("=================================")
+        print("BALANCE UPDATE ERROR:")
+        print(repr(e))
+        print("=================================")
 
         await update.message.reply_text(
             "⚠️ Could not update balance."
@@ -382,7 +476,7 @@ async def error_handler(
 
     print("=================================")
     print("TELEGRAM ERROR:")
-    print(context.error)
+    print(repr(context.error))
     print("=================================")
 
 
@@ -412,7 +506,7 @@ def main():
     print("Flask thread started.")
 
     # -----------------------------------------------------
-    # IMPORTANT FOR PYTHON 3.14
+    # Python asyncio event loop
     # -----------------------------------------------------
 
     print("Creating asyncio event loop...")
