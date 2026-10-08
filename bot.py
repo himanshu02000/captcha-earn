@@ -1,6 +1,7 @@
 import os
 import random
 import threading
+import asyncio
 
 from flask import Flask
 from supabase import create_client
@@ -21,6 +22,13 @@ BOT_TOKEN = os.environ["BOT_TOKEN"]
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SECRET_KEY = os.environ["SUPABASE_SECRET_KEY"]
+
+print("=================================")
+print("Starting Captcha Earn Bot...")
+print("BOT_TOKEN found:", bool(BOT_TOKEN))
+print("SUPABASE_URL found:", bool(SUPABASE_URL))
+print("SUPABASE_SECRET_KEY found:", bool(SUPABASE_SECRET_KEY))
+print("=================================")
 
 supabase = create_client(
     SUPABASE_URL,
@@ -44,23 +52,30 @@ def home():
 # =========================
 
 def get_user(telegram_id):
-    response = (
-        supabase
-        .table("users")
-        .select("*")
-        .eq("telegram_id", telegram_id)
-        .limit(1)
-        .execute()
-    )
+    try:
+        response = (
+            supabase
+            .table("users")
+            .select("*")
+            .eq("telegram_id", telegram_id)
+            .limit(1)
+            .execute()
+        )
 
-    if response.data:
-        return response.data[0]
+        if response.data:
+            return response.data[0]
+
+    except Exception as e:
+        print("Supabase get_user error:", e)
 
     return None
 
 
 def create_user(update: Update):
     telegram_user = update.effective_user
+
+    if telegram_user is None:
+        return None
 
     telegram_id = telegram_user.id
     username = telegram_user.username
@@ -70,19 +85,24 @@ def create_user(update: Update):
     if existing_user:
         return existing_user
 
-    response = (
-        supabase
-        .table("users")
-        .insert({
-            "telegram_id": telegram_id,
-            "username": username,
-            "balance": 0
-        })
-        .execute()
-    )
+    try:
+        response = (
+            supabase
+            .table("users")
+            .insert({
+                "telegram_id": telegram_id,
+                "username": username,
+                "balance": 0
+            })
+            .execute()
+        )
 
-    if response.data:
-        return response.data[0]
+        if response.data:
+            print("Created new user:", telegram_id)
+            return response.data[0]
+
+    except Exception as e:
+        print("Supabase create_user error:", e)
 
     return None
 
@@ -92,6 +112,12 @@ def create_user(update: Update):
 # =========================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    print("=================================")
+    print("RECEIVED /START")
+    print("User:", update.effective_user.id)
+    print("Username:", update.effective_user.username)
+    print("=================================")
 
     user = create_user(update)
 
@@ -113,6 +139,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================
 
 async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    print("RECEIVED /BALANCE")
 
     telegram_id = update.effective_user.id
 
@@ -137,6 +165,8 @@ async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def task(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
+    print("RECEIVED /TASK")
+
     telegram_id = update.effective_user.id
 
     user = get_user(telegram_id)
@@ -149,7 +179,6 @@ async def task(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     answer = a + b
 
-    # Store the answer temporarily for this Telegram session
     context.user_data["question"] = answer
 
     await update.message.reply_text(
@@ -168,6 +197,14 @@ async def message_handler(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
+    print("RECEIVED TEXT MESSAGE")
+
+    if update.effective_user is None:
+        return
+
+    if update.message is None:
+        return
+
     telegram_id = update.effective_user.id
 
     question = context.user_data.get("question")
@@ -180,15 +217,12 @@ async def message_handler(
     except (ValueError, AttributeError):
         return
 
-    correct_answer = question
-
-    if answer != correct_answer:
+    if answer != question:
         await update.message.reply_text(
             "❌ Incorrect. Try again."
         )
         return
 
-    # Get user from Supabase
     user = get_user(telegram_id)
 
     if not user:
@@ -207,18 +241,25 @@ async def message_handler(
 
     new_balance = current_balance + 1
 
-    # Update balance in Supabase
-    response = (
-        supabase
-        .table("users")
-        .update({
-            "balance": new_balance
-        })
-        .eq("telegram_id", telegram_id)
-        .execute()
-    )
+    try:
+        (
+            supabase
+            .table("users")
+            .update({
+                "balance": new_balance
+            })
+            .eq("telegram_id", telegram_id)
+            .execute()
+        )
 
-    # Remove completed question
+    except Exception as e:
+        print("Supabase balance update error:", e)
+
+        await update.message.reply_text(
+            "⚠️ Could not update your balance. Please try again."
+        )
+        return
+
     context.user_data["question"] = None
 
     await update.message.reply_text(
@@ -230,6 +271,38 @@ async def message_handler(
 
 
 # =========================
+# UNKNOWN TEXT
+# =========================
+
+async def unknown_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    print("RECEIVED UNKNOWN MESSAGE")
+
+    if update.message:
+        await update.message.reply_text(
+            "Please use /start, /task or /balance."
+        )
+
+
+# =========================
+# ERROR HANDLER
+# =========================
+
+async def error_handler(
+    update: object,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    print("=================================")
+    print("TELEGRAM ERROR:")
+    print(context.error)
+    print("=================================")
+
+
+# =========================
 # FLASK SERVER
 # =========================
 
@@ -237,7 +310,9 @@ def run_flask():
 
     app.run(
         host="0.0.0.0",
-        port=int(os.environ.get("PORT", 10000))
+        port=int(os.environ.get("PORT", 10000)),
+        debug=False,
+        use_reloader=False
     )
 
 
@@ -247,10 +322,16 @@ def run_flask():
 
 def main():
 
-    threading.Thread(
+    print("Starting Flask server...")
+
+    flask_thread = threading.Thread(
         target=run_flask,
         daemon=True
-    ).start()
+    )
+
+    flask_thread.start()
+
+    print("Building Telegram application...")
 
     application = (
         Application
@@ -278,7 +359,23 @@ def main():
         )
     )
 
-    application.run_polling()
+    application.add_handler(
+        MessageHandler(
+            filters.ALL & ~filters.COMMAND & ~filters.TEXT,
+            unknown_message
+        )
+    )
+
+    application.add_error_handler(error_handler)
+
+    print("Telegram bot is starting...")
+    print("Polling for Telegram updates...")
+
+    # Start polling
+    application.run_polling(
+        drop_pending_updates=True,
+        allowed_updates=Update.ALL_TYPES
+    )
 
 
 # =========================
