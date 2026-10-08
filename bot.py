@@ -1,9 +1,11 @@
 import os
 import random
+import asyncio
 import threading
 
 from flask import Flask
 from supabase import create_client
+
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -13,9 +15,10 @@ from telegram.ext import (
     filters,
 )
 
-# =========================
+
+# =========================================================
 # ENVIRONMENT VARIABLES
-# =========================
+# =========================================================
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 SUPABASE_URL = os.environ["SUPABASE_URL"]
@@ -28,18 +31,22 @@ print("SUPABASE_URL:", bool(SUPABASE_URL))
 print("SUPABASE_SECRET_KEY:", bool(SUPABASE_SECRET_KEY))
 print("=================================")
 
-# =========================
+
+# =========================================================
 # SUPABASE
-# =========================
+# =========================================================
 
 supabase = create_client(
     SUPABASE_URL,
     SUPABASE_SECRET_KEY
 )
 
-# =========================
+print("Supabase client created.")
+
+
+# =========================================================
 # FLASK
-# =========================
+# =========================================================
 
 app = Flask(__name__)
 
@@ -50,23 +57,27 @@ def home():
 
 
 def run_flask():
+
     print("Starting Flask...")
+
+    port = int(os.environ.get("PORT", 10000))
 
     app.run(
         host="0.0.0.0",
-        port=int(os.environ.get("PORT", 10000)),
+        port=port,
         debug=False,
         use_reloader=False
     )
 
 
-# =========================
-# DATABASE
-# =========================
+# =========================================================
+# DATABASE FUNCTIONS
+# =========================================================
 
 def get_user(telegram_id):
 
     try:
+
         result = (
             supabase
             .table("users")
@@ -80,6 +91,7 @@ def get_user(telegram_id):
             return result.data[0]
 
     except Exception as e:
+
         print("GET USER ERROR:", e)
 
     return None
@@ -93,6 +105,7 @@ def create_user(update):
     telegram_id = update.effective_user.id
     username = update.effective_user.username
 
+    # Check if user already exists
     existing = get_user(telegram_id)
 
     if existing:
@@ -112,46 +125,62 @@ def create_user(update):
         )
 
         if result.data:
+
             print("NEW USER CREATED:", telegram_id)
+
             return result.data[0]
 
     except Exception as e:
+
         print("CREATE USER ERROR:", e)
 
     return None
 
 
-# =========================
-# START
-# =========================
+# =========================================================
+# /START
+# =========================================================
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     print("RECEIVED /START")
+
+    if not update.message:
+        return
 
     user = create_user(update)
 
     balance = 0
 
     if user:
-        balance = user.get("balance", 0)
+        balance = user.get("balance", 0) or 0
 
     await update.message.reply_text(
         "🤖 Welcome to Captcha Earn!\n\n"
         "💰 Earn points by completing tasks.\n\n"
+        "Commands:\n"
         "/task - Complete a task\n"
         "/balance - Check balance\n\n"
         f"💰 Balance: {balance} points"
     )
 
 
-# =========================
-# BALANCE
-# =========================
+# =========================================================
+# /BALANCE
+# =========================================================
 
-async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def balance(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     print("RECEIVED /BALANCE")
+
+    if not update.message or not update.effective_user:
+        return
 
     telegram_id = update.effective_user.id
 
@@ -161,8 +190,11 @@ async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = create_user(update)
 
     if user:
-        amount = user.get("balance", 0)
+
+        amount = user.get("balance", 0) or 0
+
     else:
+
         amount = 0
 
     await update.message.reply_text(
@@ -170,30 +202,43 @@ async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# =========================
-# TASK
-# =========================
+# =========================================================
+# /TASK
+# =========================================================
 
-async def task(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def task(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     print("RECEIVED /TASK")
 
-    user = get_user(update.effective_user.id)
+    if not update.message or not update.effective_user:
+        return
+
+    telegram_id = update.effective_user.id
+
+    user = get_user(telegram_id)
 
     if not user:
         user = create_user(update)
 
     if not user:
+
         await update.message.reply_text(
-            "⚠️ Account error. Please use /start first."
+            "⚠️ Account error.\n"
+            "Please use /start first."
         )
+
         return
 
+    # Generate simple verification question
     a = random.randint(1, 20)
     b = random.randint(1, 20)
 
     correct_answer = a + b
 
+    # Store answer for this Telegram user
     context.user_data["answer"] = correct_answer
 
     await update.message.reply_text(
@@ -203,35 +248,52 @@ async def task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# =========================
+# =========================================================
 # ANSWER
-# =========================
+# =========================================================
 
-async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def answer(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     print("RECEIVED ANSWER")
 
     if not update.message:
         return
 
+    if not update.effective_user:
+        return
+
+    if not update.message.text:
+        return
+
     expected = context.user_data.get("answer")
 
     if expected is None:
+
         await update.message.reply_text(
             "Please use /task first."
         )
+
         return
 
+    # Convert user's answer to integer
     try:
+
         user_answer = int(
             update.message.text.strip()
         )
-    except:
+
+    except ValueError:
+
         await update.message.reply_text(
             "❌ Please enter a number."
         )
+
         return
 
+    # Wrong answer
     if user_answer != expected:
 
         context.user_data["answer"] = None
@@ -251,18 +313,29 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = create_user(update)
 
     if not user:
+
         await update.message.reply_text(
             "⚠️ Account error."
         )
+
         return
 
     old_balance = user.get("balance", 0) or 0
 
-    new_balance = float(old_balance) + 1
-
     try:
 
-        (
+        old_balance = float(old_balance)
+
+    except (ValueError, TypeError):
+
+        old_balance = 0
+
+    new_balance = old_balance + 1
+
+    # Update Supabase balance
+    try:
+
+        result = (
             supabase
             .table("users")
             .update({
@@ -270,6 +343,12 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             })
             .eq("telegram_id", telegram_id)
             .execute()
+        )
+
+        print(
+            "BALANCE UPDATED:",
+            telegram_id,
+            new_balance
         )
 
     except Exception as e:
@@ -282,6 +361,7 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
+    # Clear task
     context.user_data["answer"] = None
 
     await update.message.reply_text(
@@ -291,11 +371,14 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# =========================
-# ERROR
-# =========================
+# =========================================================
+# ERROR HANDLER
+# =========================================================
 
-async def error(update, context):
+async def error_handler(
+    update: object,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     print("=================================")
     print("TELEGRAM ERROR:")
@@ -303,11 +386,19 @@ async def error(update, context):
     print("=================================")
 
 
-# =========================
+# =========================================================
 # MAIN
-# =========================
+# =========================================================
 
 def main():
+
+    print("=================================")
+    print("STARTING MAIN")
+    print("=================================")
+
+    # -----------------------------------------------------
+    # Start Flask in background
+    # -----------------------------------------------------
 
     print("Starting Flask thread...")
 
@@ -320,8 +411,22 @@ def main():
 
     print("Flask thread started.")
 
-    # IMPORTANT:
+    # -----------------------------------------------------
+    # IMPORTANT FOR PYTHON 3.14
+    # -----------------------------------------------------
+
+    print("Creating asyncio event loop...")
+
+    loop = asyncio.new_event_loop()
+
+    asyncio.set_event_loop(loop)
+
+    print("Asyncio event loop created.")
+
+    # -----------------------------------------------------
     # Create Telegram application
+    # -----------------------------------------------------
+
     print("STEP 1: Creating Telegram application...")
 
     builder = Application.builder()
@@ -336,9 +441,9 @@ def main():
 
     print("STEP 4: Telegram application created.")
 
-    # =========================
-    # HANDLERS
-    # =========================
+    # -----------------------------------------------------
+    # Add handlers
+    # -----------------------------------------------------
 
     print("STEP 5: Adding /start...")
 
@@ -369,22 +474,44 @@ def main():
 
     print("STEP 9: Adding error handler...")
 
-    application.add_error_handler(error)
+    application.add_error_handler(
+        error_handler
+    )
 
     print("=================================")
     print("ALL HANDLERS ADDED SUCCESSFULLY")
     print("=================================")
 
+    # -----------------------------------------------------
+    # Start Telegram polling
+    # -----------------------------------------------------
+
     print("STEP 10: Starting Telegram polling...")
 
-    application.run_polling(
-        drop_pending_updates=True
-    )
+    try:
+
+        application.run_polling(
+            drop_pending_updates=True
+        )
+
+    except Exception as e:
+
+        print("=================================")
+        print("POLLING ERROR:")
+        print(repr(e))
+        print("=================================")
+
+        raise
+
+    finally:
+
+        print("Telegram polling stopped.")
 
 
-# =========================
-# RUN
-# =========================
+# =========================================================
+# RUN PROGRAM
+# =========================================================
 
 if __name__ == "__main__":
+
     main()
