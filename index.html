@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,8 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#101827">
   <title>Captcha Earn Money</title>
+
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
   <style>
     * { box-sizing: border-box; }
+
     body {
       margin: 0;
       padding: 24px 16px;
@@ -15,10 +18,24 @@
       color: #fff;
       font-family: Arial, sans-serif;
     }
+
     .container { max-width: 440px; margin: auto; }
     .logo { font-size: 42px; text-align: center; margin: 12px 0; }
     h1 { text-align: center; margin-bottom: 8px; }
-    .subtitle { text-align: center; color: #aab7ca; margin-bottom: 24px; }
+
+    .subtitle {
+      text-align: center;
+      color: #aab7ca;
+      margin-bottom: 24px;
+    }
+
+    #welcome {
+      text-align: center;
+      color: #38d996;
+      margin: 0 0 20px;
+      font-size: 15px;
+    }
+
     .card {
       background: #1b2638;
       border: 1px solid #2b3a50;
@@ -26,8 +43,15 @@
       padding: 20px;
       margin-bottom: 16px;
     }
+
     .muted { color: #aab7ca; font-size: 14px; }
-    .balance { font-size: 32px; font-weight: bold; margin-top: 8px; }
+
+    .balance {
+      font-size: 32px;
+      font-weight: bold;
+      margin-top: 8px;
+    }
+
     button {
       width: 100%;
       padding: 14px;
@@ -40,7 +64,9 @@
       font-weight: bold;
       cursor: pointer;
     }
+
     button.secondary { background: #2c3c54; color: white; }
+
     input {
       width: 100%;
       padding: 14px;
@@ -51,36 +77,61 @@
       color: white;
       font-size: 18px;
     }
+
     #message { margin-top: 14px; line-height: 1.5; }
-    footer { text-align: center; color: #8291a7; font-size: 12px; margin-top: 24px; }
+
+    footer {
+      text-align: center;
+      color: #8291a7;
+      font-size: 12px;
+      margin-top: 24px;
+    }
   </style>
 </head>
+
 <body>
   <main class="container">
     <div class="logo">💰</div>
     <h1>Captcha Earn</h1>
     <p class="subtitle">Complete tasks and collect points</p>
 
+    <p id="welcome">Connecting to Telegram...</p>
+
     <section class="card">
       <div class="muted">Demo balance</div>
       <div class="balance"><span id="balance">0</span> coins</div>
-      <p class="muted">This preview balance is stored only in this page.</p>
+      <p class="muted">
+        This preview balance is stored only in this page.
+      </p>
     </section>
 
     <section class="card">
       <h2>🔐 Solve a challenge</h2>
-      <p id="question">Tap the button to get started.</p>
-      <input id="answer" type="number" inputmode="numeric"
-             placeholder="Enter your answer">
-      <button onclick="checkAnswer()">Submit answer</button>
-      <button class="secondary" onclick="newChallenge()">New challenge</button>
-      <p id="message" role="status"></p>
+      <p id="question">Loading challenge...</p>
+
+      <input
+        id="answer"
+        type="number"
+        inputmode="numeric"
+        placeholder="Enter your answer"
+      >
+
+      <button id="submit-button" type="button" onclick="checkAnswer()">
+        Submit answer
+      </button>
+
+      <button class="secondary" type="button" onclick="newChallenge()">
+        New challenge
+      </button>
+
+      <p id="message" role="status" aria-live="polite"></p>
     </section>
 
     <section class="card">
       <h2>📺 Watch ads</h2>
       <p class="muted">Ad rewards are not connected yet.</p>
-      <button class="secondary" onclick="alert('Ad integration is not configured yet.')">
+      <button class="secondary" type="button"
+        onclick="alert('Ad integration is not configured yet.')">
         Watch an ad
       </button>
     </section>
@@ -88,7 +139,8 @@
     <section class="card">
       <h2>💸 Withdraw</h2>
       <p class="muted">Withdrawal processing is not connected yet.</p>
-      <button class="secondary" onclick="alert('Withdrawal service is not configured yet.')">
+      <button class="secondary" type="button"
+        onclick="alert('Withdrawal service is not configured yet.')">
         Request withdrawal
       </button>
     </section>
@@ -97,6 +149,30 @@
   </main>
 
   <script>
+    // Initialize Telegram Mini App
+    const telegramApp = window.Telegram?.WebApp;
+
+    if (telegramApp) {
+      telegramApp.ready();
+      telegramApp.expand();
+    }
+
+    // Display the Telegram user's first name when available
+    const welcome = document.getElementById("welcome");
+    const telegramUser = telegramApp?.initDataUnsafe?.user;
+
+    if (telegramUser) {
+      const name = telegramUser.first_name ||
+                   telegramUser.username ||
+                   "User";
+
+      welcome.textContent = "Welcome, " + name + "!";
+    } else {
+      welcome.textContent =
+        "Open this Mini App through Telegram to see your name.";
+    }
+
+    // Demo challenge and balance logic
     let first = 0;
     let second = 0;
     let coins = 0;
@@ -106,36 +182,45 @@
       first = Math.floor(Math.random() * 9) + 1;
       second = Math.floor(Math.random() * 9) + 1;
       expected = first + second;
-      document.getElementById('question').textContent =
+
+      document.getElementById("question").textContent =
         `What is ${first} + ${second}?`;
-      document.getElementById('answer').value = '';
-      document.getElementById('message').textContent = '';
+
+      document.getElementById("answer").value = "";
+      document.getElementById("message").textContent = "";
+
+      document.getElementById("submit-button").disabled = false;
     }
 
     function checkAnswer() {
-      const field = document.getElementById('answer');
-      const message = document.getElementById('message');
+      const field = document.getElementById("answer");
+      const message = document.getElementById("message");
 
       if (expected === null) {
-        message.textContent = 'Please start a challenge first.';
+        message.textContent = "Start a new challenge first.";
         return;
       }
 
-      if (field.value.trim() === '') {
-        message.textContent = 'Enter your answer first.';
+      if (field.value.trim() === "") {
+        message.textContent = "Enter your answer first.";
         return;
       }
 
       if (Number(field.value) === expected) {
         coins += 1;
-        document.getElementById('balance').textContent = coins;
-        message.textContent = 'Correct! +1 demo coin.';
+
+        document.getElementById("balance").textContent = coins;
+        message.textContent = "Correct! +1 demo coin.";
+
         expected = null;
-        document.getElementById('question').textContent =
-          'Challenge completed. Start another one!';
-        field.value = '';
+
+        document.getElementById("question").textContent =
+          "Challenge completed. Start another one!";
+
+        field.value = "";
+        document.getElementById("submit-button").disabled = true;
       } else {
-        message.textContent = 'Not quite. Try again.';
+        message.textContent = "Not quite. Try again.";
       }
     }
 
@@ -143,4 +228,3 @@
   </script>
 </body>
 </html>
-
