@@ -1,1 +1,146 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#101827">
+  <title>Captcha Earn Money</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px 16px;
+      background: #101827;
+      color: #fff;
+      font-family: Arial, sans-serif;
+    }
+    .container { max-width: 440px; margin: auto; }
+    .logo { font-size: 42px; text-align: center; margin: 12px 0; }
+    h1 { text-align: center; margin-bottom: 8px; }
+    .subtitle { text-align: center; color: #aab7ca; margin-bottom: 24px; }
+    .card {
+      background: #1b2638;
+      border: 1px solid #2b3a50;
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .muted { color: #aab7ca; font-size: 14px; }
+    .balance { font-size: 32px; font-weight: bold; margin-top: 8px; }
+    button {
+      width: 100%;
+      padding: 14px;
+      margin-top: 12px;
+      border: 0;
+      border-radius: 10px;
+      background: #38d996;
+      color: #102018;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button.secondary { background: #2c3c54; color: white; }
+    input {
+      width: 100%;
+      padding: 14px;
+      margin-top: 14px;
+      border: 1px solid #42536c;
+      border-radius: 10px;
+      background: #101827;
+      color: white;
+      font-size: 18px;
+    }
+    #message { margin-top: 14px; line-height: 1.5; }
+    footer { text-align: center; color: #8291a7; font-size: 12px; margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <div class="logo">💰</div>
+    <h1>Captcha Earn</h1>
+    <p class="subtitle">Complete tasks and collect points</p>
+
+    <section class="card">
+      <div class="muted">Demo balance</div>
+      <div class="balance"><span id="balance">0</span> coins</div>
+      <p class="muted">This preview balance is stored only in this page.</p>
+    </section>
+
+    <section class="card">
+      <h2>🔐 Solve a challenge</h2>
+      <p id="question">Tap the button to get started.</p>
+      <input id="answer" type="number" inputmode="numeric"
+             placeholder="Enter your answer">
+      <button onclick="checkAnswer()">Submit answer</button>
+      <button class="secondary" onclick="newChallenge()">New challenge</button>
+      <p id="message" role="status"></p>
+    </section>
+
+    <section class="card">
+      <h2>📺 Watch ads</h2>
+      <p class="muted">Ad rewards are not connected yet.</p>
+      <button class="secondary" onclick="alert('Ad integration is not configured yet.')">
+        Watch an ad
+      </button>
+    </section>
+
+    <section class="card">
+      <h2>💸 Withdraw</h2>
+      <p class="muted">Withdrawal processing is not connected yet.</p>
+      <button class="secondary" onclick="alert('Withdrawal service is not configured yet.')">
+        Request withdrawal
+      </button>
+    </section>
+
+    <footer>Captcha Earn • Demo interface</footer>
+  </main>
+
+  <script>
+    let first = 0;
+    let second = 0;
+    let coins = 0;
+    let expected = null;
+
+    function newChallenge() {
+      first = Math.floor(Math.random() * 9) + 1;
+      second = Math.floor(Math.random() * 9) + 1;
+      expected = first + second;
+      document.getElementById('question').textContent =
+        `What is ${first} + ${second}?`;
+      document.getElementById('answer').value = '';
+      document.getElementById('message').textContent = '';
+    }
+
+    function checkAnswer() {
+      const field = document.getElementById('answer');
+      const message = document.getElementById('message');
+
+      if (expected === null) {
+        message.textContent = 'Please start a challenge first.';
+        return;
+      }
+
+      if (field.value.trim() === '') {
+        message.textContent = 'Enter your answer first.';
+        return;
+      }
+
+      if (Number(field.value) === expected) {
+        coins += 1;
+        document.getElementById('balance').textContent = coins;
+        message.textContent = 'Correct! +1 demo coin.';
+        expected = null;
+        document.getElementById('question').textContent =
+          'Challenge completed. Start another one!';
+        field.value = '';
+      } else {
+        message.textContent = 'Not quite. Try again.';
+      }
+    }
+
+    newChallenge();
+  </script>
+</body>
+</html>
+
