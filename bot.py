@@ -1,5 +1,6 @@
 
 import os
+import asyncio
 import random
 import threading
 
@@ -17,7 +18,7 @@ from telegram.ext import (
 
 
 # =========================================================
-# ENVIRONMENT VARIABLES
+# CONFIGURATION
 # =========================================================
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
@@ -25,24 +26,28 @@ SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SECRET_KEY = os.environ["SUPABASE_SECRET_KEY"]
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MINI_APP_URL = "https://captcha-earning-bot.onrender.com"
 
-print("=================================")
-print("Starting Captcha Earn Bot")
-print("BOT_TOKEN configured:", bool(BOT_TOKEN))
-print("SUPABASE_URL configured:", bool(SUPABASE_URL))
-print("SUPABASE_SECRET_KEY configured:", bool(SUPABASE_SECRET_KEY))
-print("=================================")
+print("Starting Captcha Earn Bot...")
+print("Bot token configured:", bool(BOT_TOKEN))
+print("Supabase URL configured:", bool(SUPABASE_URL))
+print("Supabase key configured:", bool(SUPABASE_SECRET_KEY))
 
 
 # =========================================================
 # SUPABASE
 # =========================================================
 
-supabase = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
+supabase = create_client(
+    SUPABASE_URL,
+    SUPABASE_SECRET_KEY,
+)
+
+print("Supabase client initialized.")
 
 
 # =========================================================
-# FLASK / MINI APP
+# FLASK WEBSITE
 # =========================================================
 
 app = Flask(__name__)
@@ -59,12 +64,16 @@ def health():
 
 
 def run_flask():
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get("PORT", "10000"))
+
+    print("Starting Flask on port", port)
+
     app.run(
         host="0.0.0.0",
         port=port,
         debug=False,
         use_reloader=False,
+        threaded=True,
     )
 
 
@@ -81,22 +90,29 @@ def get_user(telegram_id):
             .limit(1)
             .execute()
         )
-        return result.data[0] if result.data else None
-    except Exception as e:
-        print("GET USER ERROR:", repr(e))
+
+        if result.data:
+            return result.data[0]
+
+        return None
+
+    except Exception as exc:
+        print("GET USER ERROR:", repr(exc))
         return None
 
 
 def create_user(update):
     telegram_user = update.effective_user
-    if not telegram_user:
+
+    if telegram_user is None:
         return None
 
     telegram_id = telegram_user.id
-    existing = get_user(telegram_id)
 
-    if existing:
-        return existing
+    existing_user = get_user(telegram_id)
+
+    if existing_user:
+        return existing_user
 
     try:
         result = (
@@ -108,22 +124,40 @@ def create_user(update):
             })
             .execute()
         )
-        return result.data[0] if result.data else None
-    except Exception as e:
-        print("CREATE USER ERROR:", repr(e))
-        return None
+
+        if result.data:
+            return result.data[0]
+
+        # A concurrent request may have created this account.
+        return get_user(telegram_id)
+
+    except Exception as exc:
+        print("CREATE USER ERROR:", repr(exc))
+
+        # Handle a possible duplicate-account race.
+        return get_user(telegram_id)
 
 
 # =========================================================
 # /START
 # =========================================================
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.effective_user:
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    if update.message is None or update.effective_user is None:
         return
 
     user = create_user(update)
-    balance = user.get("balance", 0) if user else 0
+
+    if user is None:
+        await update.message.reply_text(
+            "Sorry, your account could not be loaded. Please try /start again."
+        )
+        return
+
+    amount = user.get("balance", 0) or 0
 
     keyboard = [[
         InlineKeyboardButton(
@@ -134,10 +168,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "🤖 Welcome to Captcha Earn!\n\n"
-        "💰 Earn points by completing tasks.\n\n"
-        "/task - Complete a verification task\n"
+        "Complete verification tasks to earn points.\n\n"
+        "/task - Start a task\n"
         "/balance - Check your balance\n\n"
-        f"💰 Balance: {balance} points",
+        f"💰 Your balance: {amount} points",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
@@ -146,17 +180,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /BALANCE
 # =========================================================
 
-async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.effective_user:
+async def balance(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    if update.message is None or update.effective_user is None:
         return
 
-    telegram_id = update.effective_user.id
-    user = get_user(telegram_id)
+    user = get_user(update.effective_user.id)
 
-    if not user:
+    if user is None:
         user = create_user(update)
 
-    amount = user.get("balance", 0) if user else 0
+    if user is None:
+        await update.message.reply_text(
+            "Your account could not be loaded. Please try /start."
+        )
+        return
+
+    amount = user.get("balance", 0) or 0
 
     await update.message.reply_text(
         f"💰 Your balance: {amount} points"
@@ -167,18 +209,21 @@ async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /TASK
 # =========================================================
 
-async def task(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.effective_user:
+async def task(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    if update.message is None or update.effective_user is None:
         return
 
     user = get_user(update.effective_user.id)
 
-    if not user:
+    if user is None:
         user = create_user(update)
 
-    if not user:
+    if user is None:
         await update.message.reply_text(
-            "⚠️ Could not load your account. Please try /start again."
+            "Account error. Please try /start again."
         )
         return
 
@@ -195,11 +240,14 @@ async def task(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # =========================================================
-# ANSWER
+# ANSWER AND REWARD
 # =========================================================
 
-async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.effective_user:
+async def answer(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    if update.message is None or update.effective_user is None:
         return
 
     if not update.message.text:
@@ -208,30 +256,37 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     expected = context.user_data.get("answer")
 
     if expected is None:
-        await update.message.reply_text("Please use /task first.")
+        await update.message.reply_text(
+            "Please use /task first."
+        )
         return
 
     try:
-        user_answer = int(update.message.text.strip())
+        submitted_answer = int(update.message.text.strip())
     except ValueError:
-        await update.message.reply_text("❌ Please enter a number.")
+        await update.message.reply_text(
+            "Please enter a number."
+        )
         return
 
-    if user_answer != expected:
-        context.user_data["answer"] = None
+    if submitted_answer != expected:
+        context.user_data.pop("answer", None)
+
         await update.message.reply_text(
-            "❌ Wrong answer.\nUse /task to try again."
+            "❌ Incorrect answer.\nUse /task to try again."
         )
         return
 
     telegram_id = update.effective_user.id
     user = get_user(telegram_id)
 
-    if not user:
+    if user is None:
         user = create_user(update)
 
-    if not user:
-        await update.message.reply_text("⚠️ Account error.")
+    if user is None:
+        await update.message.reply_text(
+            "Account error. Please try /start again."
+        )
         return
 
     try:
@@ -242,28 +297,33 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             supabase.table("users")
             .update({"balance": new_balance})
             .eq("telegram_id", telegram_id)
+            .select("telegram_id", "balance")
             .execute()
         )
 
         if not result.data:
             await update.message.reply_text(
-                "⚠️ Balance update could not be confirmed. Please try again later."
+                "The balance update could not be confirmed. "
+                "Please check /balance before trying again."
             )
             return
 
-    except Exception as e:
-        print("BALANCE UPDATE ERROR:", repr(e))
+        saved_balance = result.data[0].get("balance", new_balance)
+
+    except Exception as exc:
+        print("BALANCE UPDATE ERROR:", repr(exc))
+
         await update.message.reply_text(
-            "⚠️ Could not update your balance."
+            "Could not update your balance. Please try again later."
         )
         return
 
-    context.user_data["answer"] = None
+    context.user_data.pop("answer", None)
 
     await update.message.reply_text(
-        "✅ Correct!\n\n"
+        "✅ Correct answer!\n\n"
         "🎉 You earned 1 point!\n\n"
-        f"💰 Balance: {new_balance:g} points"
+        f"💰 Balance: {saved_balance} points"
     )
 
 
@@ -271,7 +331,10 @@ async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ERROR HANDLER
 # =========================================================
 
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+async def error_handler(
+    update: object,
+    context: ContextTypes.DEFAULT_TYPE,
+):
     print("TELEGRAM ERROR:", repr(context.error))
 
 
@@ -280,14 +343,15 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 # =========================================================
 
 def main():
-    # Run Flask in the background.
+    # Start Flask once, in a background thread.
     flask_thread = threading.Thread(
         target=run_flask,
+        name="flask-server",
         daemon=True,
     )
     flask_thread.start()
 
-    # Create Telegram application.
+    # Configure Telegram handlers.
     application = Application.builder().token(BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
@@ -295,14 +359,32 @@ def main():
     application.add_handler(CommandHandler("task", task))
 
     application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, answer)
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            answer,
+        )
     )
 
     application.add_error_handler(error_handler)
 
-    print("Bot startup complete; starting Telegram polling.")
+    # Python 3.14 compatibility:
+    # Explicitly create and install the event loop before polling.
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
-    application.run_polling(drop_pending_updates=True)
+    print("Event loop initialized.")
+    print("Starting Telegram polling...")
+
+    try:
+        application.run_polling(
+            drop_pending_updates=True,
+        )
+    finally:
+        if not loop.is_closed():
+            loop.close()
+
+        asyncio.set_event_loop(None)
+        print("Telegram polling stopped.")
 
 
 if __name__ == "__main__":
