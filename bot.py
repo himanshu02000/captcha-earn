@@ -1,3 +1,4 @@
+
 import os
 import asyncio
 import hmac
@@ -6,6 +7,7 @@ import json
 import time
 import secrets
 import threading
+import random
 from urllib.parse import parse_qsl
 
 from flask import Flask, request, jsonify, send_from_directory
@@ -28,6 +30,12 @@ BOT_TOKEN = os.environ["BOT_TOKEN"]
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SECRET_KEY = os.environ["SUPABASE_SECRET_KEY"]
 
+# Set this in Render Environment Variables.
+# Do not put it in index.html or share it publicly.
+ADSGRAM_CALLBACK_SECRET = os.environ.get(
+    "ADSGRAM_CALLBACK_SECRET", ""
+)
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MINI_APP_URL = "https://t.me/CaptchaEarnIndiaBot/earncoins"
 
@@ -35,8 +43,7 @@ print("Starting Captcha Earn Bot...")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
 
-# Temporary challenge storage. Challenges expire and are
-# lost if the server restarts.
+# Temporary challenge storage. Challenges are lost on restart.
 challenges = {}
 challenge_lock = threading.Lock()
 
@@ -81,8 +88,11 @@ def verify_telegram_init_data(init_data):
         auth_date = int(parsed.get("auth_date", "0"))
         now = int(time.time())
 
-        # Reject expired or implausibly future-dated sessions.
-        if auth_date <= 0 or now - auth_date > 86400 or auth_date > now + 60:
+        if (
+            auth_date <= 0
+            or now - auth_date > 86400
+            or auth_date > now + 60
+        ):
             return None
 
         user_data = json.loads(parsed.get("user", "{}"))
@@ -132,16 +142,17 @@ def ensure_user(telegram_id, username=None):
     user = get_user(telegram_id)
 
     if user:
-        # Keep the username current when Telegram provides one.
         if username and user.get("username") != username:
             try:
-                supabase.table("users").update(
-                    {"username": username}
-                ).eq("telegram_id", telegram_id).execute()
+                (
+                    supabase.table("users")
+                    .update({"username": username})
+                    .eq("telegram_id", telegram_id)
+                    .execute()
+                )
+                user["username"] = username
             except Exception as exc:
                 print("USERNAME UPDATE ERROR:", repr(exc))
-
-            user["username"] = username
 
         return user
 
@@ -162,7 +173,6 @@ def ensure_user(telegram_id, username=None):
     except Exception as exc:
         print("CREATE USER ERROR:", repr(exc))
 
-    # Handles an account created by another request at the same time.
     return get_user(telegram_id)
 
 
@@ -180,9 +190,9 @@ def create_user(update):
 
 def add_one_coin(telegram_id):
     """
-    Basic balance update. For stronger concurrency protection,
-    replace this with an atomic PostgreSQL RPC function before
-    handling significant reward volume.
+    Basic balance update for the prototype.
+    Use an atomic database operation before issuing
+    significant or redeemable rewards.
     """
     user = get_user(telegram_id)
 
@@ -313,12 +323,18 @@ def mini_app_answer():
     submitted_answer = body.get("answer")
 
     if not isinstance(challenge_id, str):
-        return jsonify({"ok": False, "error": "Invalid challenge."}), 400
+        return jsonify({
+            "ok": False,
+            "error": "Invalid challenge."
+        }), 400
 
     try:
         submitted_answer = int(submitted_answer)
     except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "Enter a valid number."}), 400
+        return jsonify({
+            "ok": False,
+            "error": "Enter a valid number."
+        }), 400
 
     with challenge_lock:
         challenge = challenges.get(challenge_id)
@@ -354,8 +370,6 @@ def mini_app_answer():
                 "error": "Incorrect answer. Try again."
             }), 400
 
-        # Consume the challenge before awarding a reward so it
-        # cannot be submitted twice.
         challenges.pop(challenge_id, None)
 
     balance = add_one_coin(telegram_id)
@@ -371,6 +385,77 @@ def mini_app_answer():
         "message": "Correct! 1 coin earned.",
         "balance": balance,
     })
+
+
+# =========================================================
+# ADSGRAM REWARD CALLBACK
+# =========================================================
+
+@app.route("/api/adsgram/reward", methods=["GET"])
+def adsgram_reward():
+    """
+    AdsGram Reward URL callback.
+
+    Configure the URL in AdsGram using:
+    https://YOUR-RENDER-DOMAIN/api/adsgram/reward?userId=[userId]&token=YOUR_SECRET
+
+    The token must match ADSGRAM_CALLBACK_SECRET in Render.
+    """
+
+    expected_token = ADSGRAM_CALLBACK_SECRET
+    supplied_token = request.args.get("token", "")
+
+    if not expected_token:
+        print("ADSGRAM CALLBACK ERROR: callback secret is not configured")
+        return jsonify({
+            "ok": False,
+            "error": "Reward callback is not configured."
+        }), 503
+
+    if not supplied_token or not hmac.compare_digest(
+        expected_token, supplied_token
+    ):
+        return jsonify({
+            "ok": False,
+            "error": "Unauthorized callback."
+        }), 403
+
+    raw_user_id = request.args.get("userId", "")
+
+    try:
+        telegram_id = int(raw_user_id)
+        if telegram_id <= 0:
+            raise ValueError("Invalid Telegram ID")
+    except (TypeError, ValueError):
+        return jsonify({
+            "ok": False,
+            "error": "Invalid userId."
+        }), 400
+
+    # Only reward an account that already exists.
+    user = get_user(telegram_id)
+
+    if user is None:
+        return jsonify({
+            "ok": False,
+            "error": "User account not found."
+        }), 404
+
+    balance = add_one_coin(telegram_id)
+
+    if balance is None:
+        return jsonify({
+            "ok": False,
+            "error": "Could not save ad reward."
+        }), 500
+
+    print("ADSGRAM REWARD PROCESSED for Telegram user:", telegram_id)
+
+    return jsonify({
+        "ok": True,
+        "message": "Reward processed.",
+        "balance": balance,
+    }), 200
 
 
 # =========================================================
