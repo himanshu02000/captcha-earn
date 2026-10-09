@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -67,6 +68,11 @@
 
     button.secondary { background: #2c3c54; color: white; }
 
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
     input {
       width: 100%;
       padding: 14px;
@@ -95,14 +101,12 @@
     <h1>Captcha Earn</h1>
     <p class="subtitle">Complete tasks and collect points</p>
 
-    <p id="welcome">Connecting to Telegram...</p>
+    <p id="welcome">Connecting to your account...</p>
 
     <section class="card">
-      <div class="muted">Demo balance</div>
-      <div class="balance"><span id="balance">0</span> coins</div>
-      <p class="muted">
-        This preview balance is stored only in this page.
-      </p>
+      <div class="muted">Your balance</div>
+      <div class="balance"><span id="balance">—</span> coins</div>
+      <p class="muted">Your balance is loaded from your account.</p>
     </section>
 
     <section class="card">
@@ -114,13 +118,14 @@
         type="number"
         inputmode="numeric"
         placeholder="Enter your answer"
+        autocomplete="off"
       >
 
-      <button id="submit-button" type="button" onclick="checkAnswer()">
+      <button id="submit-button" type="button">
         Submit answer
       </button>
 
-      <button class="secondary" type="button" onclick="newChallenge()">
+      <button id="new-button" class="secondary" type="button">
         New challenge
       </button>
 
@@ -130,101 +135,168 @@
     <section class="card">
       <h2>📺 Watch ads</h2>
       <p class="muted">Ad rewards are not connected yet.</p>
-      <button class="secondary" type="button"
-        onclick="alert('Ad integration is not configured yet.')">
-        Watch an ad
+      <button class="secondary" type="button" disabled>
+        Watch an ad — coming soon
       </button>
     </section>
 
     <section class="card">
       <h2>💸 Withdraw</h2>
       <p class="muted">Withdrawal processing is not connected yet.</p>
-      <button class="secondary" type="button"
-        onclick="alert('Withdrawal service is not configured yet.')">
-        Request withdrawal
+      <button class="secondary" type="button" disabled>
+        Withdraw — coming soon
       </button>
     </section>
 
-    <footer>Captcha Earn • Demo interface</footer>
+    <footer>Captcha Earn • Points and rewards</footer>
   </main>
 
   <script>
-    // Initialize Telegram Mini App
     const telegramApp = window.Telegram?.WebApp;
+
+    const welcome = document.getElementById("welcome");
+    const balanceElement = document.getElementById("balance");
+    const questionElement = document.getElementById("question");
+    const answerInput = document.getElementById("answer");
+    const messageElement = document.getElementById("message");
+    const submitButton = document.getElementById("submit-button");
+    const newButton = document.getElementById("new-button");
+
+    let initData = "";
+    let challengeId = null;
+    let busy = false;
 
     if (telegramApp) {
       telegramApp.ready();
       telegramApp.expand();
+      initData = telegramApp.initData || "";
     }
 
-    // Display the Telegram user's first name when available
-    const welcome = document.getElementById("welcome");
-    const telegramUser = telegramApp?.initDataUnsafe?.user;
+    async function apiRequest(endpoint, data) {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          ...data,
+          initData: initData
+        })
+      });
 
-    if (telegramUser) {
-      const name = telegramUser.first_name ||
-                   telegramUser.username ||
-                   "User";
+      const result = await response.json().catch(() => ({}));
 
-      welcome.textContent = "Welcome, " + name + "!";
-    } else {
-      welcome.textContent =
-        "Open this Mini App through Telegram to see your name.";
+      if (!response.ok || result.ok !== true) {
+        throw new Error(result.error || "Something went wrong. Please try again.");
+      }
+
+      return result;
     }
 
-    // Demo challenge and balance logic
-    let first = 0;
-    let second = 0;
-    let coins = 0;
-    let expected = null;
-
-    function newChallenge() {
-      first = Math.floor(Math.random() * 9) + 1;
-      second = Math.floor(Math.random() * 9) + 1;
-      expected = first + second;
-
-      document.getElementById("question").textContent =
-        `What is ${first} + ${second}?`;
-
-      document.getElementById("answer").value = "";
-      document.getElementById("message").textContent = "";
-
-      document.getElementById("submit-button").disabled = false;
+    function setBusy(value) {
+      busy = value;
+      submitButton.disabled = value || !challengeId;
+      newButton.disabled = value;
     }
 
-    function checkAnswer() {
-      const field = document.getElementById("answer");
-      const message = document.getElementById("message");
+    async function loadChallenge() {
+      if (busy) return;
 
-      if (expected === null) {
-        message.textContent = "Start a new challenge first.";
+      setBusy(true);
+      challengeId = null;
+      submitButton.disabled = true;
+      messageElement.textContent = "";
+      questionElement.textContent = "Loading challenge...";
+      answerInput.value = "";
+
+      try {
+        const result = await apiRequest("/api/challenge", {});
+
+        challengeId = result.challenge_id;
+        questionElement.textContent = result.question;
+        balanceElement.textContent = result.balance;
+        submitButton.disabled = false;
+      } catch (error) {
+        questionElement.textContent = "Could not load a challenge.";
+        messageElement.textContent = error.message;
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function checkAnswer() {
+      if (busy || !challengeId) return;
+
+      const value = answerInput.value.trim();
+
+      if (value === "") {
+        messageElement.textContent = "Please enter your answer.";
         return;
       }
 
-      if (field.value.trim() === "") {
-        message.textContent = "Enter your answer first.";
-        return;
-      }
+      setBusy(true);
+      messageElement.textContent = "Checking your answer...";
 
-      if (Number(field.value) === expected) {
-        coins += 1;
+      try {
+        const result = await apiRequest("/api/answer", {
+          challenge_id: challengeId,
+          answer: value
+        });
 
-        document.getElementById("balance").textContent = coins;
-        message.textContent = "Correct! +1 demo coin.";
-
-        expected = null;
-
-        document.getElementById("question").textContent =
-          "Challenge completed. Start another one!";
-
-        field.value = "";
-        document.getElementById("submit-button").disabled = true;
-      } else {
-        message.textContent = "Not quite. Try again.";
+        balanceElement.textContent = result.balance;
+        messageElement.textContent = result.message;
+        challengeId = null;
+        questionElement.textContent =
+          "Challenge completed! Start another one to continue.";
+        answerInput.value = "";
+      } catch (error) {
+        messageElement.textContent = error.message;
+      } finally {
+        setBusy(false);
+        submitButton.disabled = !challengeId;
       }
     }
 
-    newChallenge();
+    async function startApp() {
+      if (!telegramApp || !initData) {
+        welcome.textContent =
+          "Please open this Mini App from your Telegram bot.";
+        questionElement.textContent =
+          "Open the app in Telegram to load your challenge.";
+        messageElement.textContent =
+          "Your Telegram account could not be verified.";
+        submitButton.disabled = true;
+        newButton.disabled = true;
+        return;
+      }
+
+      setBusy(true);
+
+      try {
+        const result = await apiRequest("/api/session", {});
+
+        welcome.textContent = "Welcome, " + (result.name || "User") + "!";
+        balanceElement.textContent = result.balance;
+        await loadChallenge();
+      } catch (error) {
+        welcome.textContent = "Could not connect to your account.";
+        questionElement.textContent = "Challenge unavailable.";
+        messageElement.textContent = error.message;
+        submitButton.disabled = true;
+      } finally {
+        setBusy(false);
+        submitButton.disabled = !challengeId;
+      }
+    }
+
+    submitButton.addEventListener("click", checkAnswer);
+    newButton.addEventListener("click", loadChallenge);
+
+    answerInput.addEventListener("keydown", event => {
+      if (event.key === "Enter") checkAnswer();
+    });
+
+    startApp();
   </script>
 </body>
 </html>
