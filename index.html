@@ -289,19 +289,17 @@
       try {
         if (!adController) {
           adController = window.Adsgram.init({
-            blockId: "52862"
+            blockId: "52880"
           });
         }
 
         const previousBalance = Number(balanceElement.textContent);
 
-        // AdsGram resolves this promise when the reward ad is completed.
         await adController.show();
 
         adMessage.textContent =
           "Ad completed. Checking whether your reward has arrived...";
 
-        // The server-side Reward URL callback may take a little time.
         let rewardArrived = false;
 
         for (let attempt = 0; attempt < 10; attempt++) {
@@ -318,7 +316,7 @@
               break;
             }
           } catch (error) {
-            // Retry balance refresh during the remaining attempts.
+            // Try refreshing again.
           }
         }
 
@@ -328,7 +326,7 @@
         } else {
           adMessage.textContent =
             "The ad finished, but the reward is not visible yet. " +
-            "Please wait a little and reopen the app to check your balance.";
+            "Please check your balance again shortly.";
         }
       } catch (error) {
         adMessage.textContent =
