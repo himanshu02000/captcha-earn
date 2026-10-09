@@ -1,10 +1,14 @@
-
 import os
 import asyncio
-import random
+import hmac
+import hashlib
+import json
+import time
+import secrets
 import threading
+from urllib.parse import parse_qsl
 
-from flask import Flask, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory
 from supabase import create_client
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -16,7 +20,6 @@ from telegram.ext import (
     filters,
 )
 
-
 # =========================================================
 # CONFIGURATION
 # =========================================================
@@ -26,55 +29,82 @@ SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SECRET_KEY = os.environ["SUPABASE_SECRET_KEY"]
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MINI_APP_URL = "https://captcha-earning-bot.onrender.com"
+MINI_APP_URL = "https://t.me/CaptchaEarnIndiaBot/earncoins"
 
 print("Starting Captcha Earn Bot...")
-print("Bot token configured:", bool(BOT_TOKEN))
-print("Supabase URL configured:", bool(SUPABASE_URL))
-print("Supabase key configured:", bool(SUPABASE_SECRET_KEY))
 
+supabase = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
 
-# =========================================================
-# SUPABASE
-# =========================================================
-
-supabase = create_client(
-    SUPABASE_URL,
-    SUPABASE_SECRET_KEY,
-)
-
-print("Supabase client initialized.")
-
-
-# =========================================================
-# FLASK WEBSITE
-# =========================================================
+# Temporary challenge storage. Challenges expire and are
+# lost if the server restarts.
+challenges = {}
+challenge_lock = threading.Lock()
 
 app = Flask(__name__)
 
 
-@app.route("/")
-def home():
-    return send_from_directory(BASE_DIR, "index.html")
+# =========================================================
+# TELEGRAM MINI APP AUTHENTICATION
+# =========================================================
+
+def verify_telegram_init_data(init_data):
+    if not init_data or not isinstance(init_data, str):
+        return None
+
+    try:
+        parsed = dict(parse_qsl(init_data, keep_blank_values=True))
+
+        received_hash = parsed.pop("hash", None)
+        if not received_hash:
+            return None
+
+        data_check_string = "\n".join(
+            f"{key}={value}"
+            for key, value in sorted(parsed.items())
+        )
+
+        secret_key = hmac.new(
+            b"WebAppData",
+            BOT_TOKEN.encode("utf-8"),
+            hashlib.sha256,
+        ).digest()
+
+        calculated_hash = hmac.new(
+            secret_key,
+            data_check_string.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+
+        if not hmac.compare_digest(calculated_hash, received_hash):
+            return None
+
+        auth_date = int(parsed.get("auth_date", "0"))
+        now = int(time.time())
+
+        # Reject expired or implausibly future-dated sessions.
+        if auth_date <= 0 or now - auth_date > 86400 or auth_date > now + 60:
+            return None
+
+        user_data = json.loads(parsed.get("user", "{}"))
+
+        if not isinstance(user_data, dict) or not user_data.get("id"):
+            return None
+
+        return user_data
+
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return None
 
 
-@app.route("/health")
-def health():
-    return {"status": "ok"}, 200
+def authenticated_user():
+    body = request.get_json(silent=True) or {}
+    init_data = body.get("initData", "")
+    user_data = verify_telegram_init_data(init_data)
 
+    if not user_data:
+        return None, None
 
-def run_flask():
-    port = int(os.environ.get("PORT", "10000"))
-
-    print("Starting Flask on port", port)
-
-    app.run(
-        host="0.0.0.0",
-        port=port,
-        debug=False,
-        use_reloader=False,
-        threaded=True,
-    )
+    return user_data, int(user_data["id"])
 
 
 # =========================================================
@@ -91,35 +121,36 @@ def get_user(telegram_id):
             .execute()
         )
 
-        if result.data:
-            return result.data[0]
-
-        return None
+        return result.data[0] if result.data else None
 
     except Exception as exc:
         print("GET USER ERROR:", repr(exc))
         return None
 
 
-def create_user(update):
-    telegram_user = update.effective_user
+def ensure_user(telegram_id, username=None):
+    user = get_user(telegram_id)
 
-    if telegram_user is None:
-        return None
+    if user:
+        # Keep the username current when Telegram provides one.
+        if username and user.get("username") != username:
+            try:
+                supabase.table("users").update(
+                    {"username": username}
+                ).eq("telegram_id", telegram_id).execute()
+            except Exception as exc:
+                print("USERNAME UPDATE ERROR:", repr(exc))
 
-    telegram_id = telegram_user.id
+            user["username"] = username
 
-    existing_user = get_user(telegram_id)
-
-    if existing_user:
-        return existing_user
+        return user
 
     try:
         result = (
             supabase.table("users")
             .insert({
                 "telegram_id": telegram_id,
-                "username": telegram_user.username,
+                "username": username,
                 "balance": 0,
             })
             .execute()
@@ -128,24 +159,225 @@ def create_user(update):
         if result.data:
             return result.data[0]
 
-        # A concurrent request may have created this account.
-        return get_user(telegram_id)
-
     except Exception as exc:
         print("CREATE USER ERROR:", repr(exc))
 
-        # Handle a possible duplicate-account race.
-        return get_user(telegram_id)
+    # Handles an account created by another request at the same time.
+    return get_user(telegram_id)
+
+
+def create_user(update):
+    telegram_user = update.effective_user
+
+    if telegram_user is None:
+        return None
+
+    return ensure_user(
+        telegram_user.id,
+        telegram_user.username,
+    )
+
+
+def add_one_coin(telegram_id):
+    """
+    Basic balance update. For stronger concurrency protection,
+    replace this with an atomic PostgreSQL RPC function before
+    handling significant reward volume.
+    """
+    user = get_user(telegram_id)
+
+    if user is None:
+        return None
+
+    try:
+        old_balance = float(user.get("balance", 0) or 0)
+        new_balance = old_balance + 1
+
+        result = (
+            supabase.table("users")
+            .update({"balance": new_balance})
+            .eq("telegram_id", telegram_id)
+            .select("telegram_id, balance")
+            .execute()
+        )
+
+        if not result.data:
+            return None
+
+        return result.data[0].get("balance", new_balance)
+
+    except Exception as exc:
+        print("BALANCE UPDATE ERROR:", repr(exc))
+        return None
 
 
 # =========================================================
-# /START
+# FLASK WEBSITE
 # =========================================================
 
-async def start(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+@app.route("/")
+def home():
+    return send_from_directory(BASE_DIR, "index.html")
+
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"}), 200
+
+
+# =========================================================
+# MINI APP API
+# =========================================================
+
+@app.route("/api/session", methods=["POST"])
+def mini_app_session():
+    user_data, telegram_id = authenticated_user()
+
+    if not user_data:
+        return jsonify({
+            "ok": False,
+            "error": "Telegram authentication failed. Reopen the app from Telegram."
+        }), 401
+
+    user = ensure_user(
+        telegram_id,
+        user_data.get("username"),
+    )
+
+    if user is None:
+        return jsonify({
+            "ok": False,
+            "error": "Could not load your account."
+        }), 500
+
+    return jsonify({
+        "ok": True,
+        "name": user_data.get("first_name", "User"),
+        "balance": user.get("balance", 0) or 0,
+    })
+
+
+@app.route("/api/challenge", methods=["POST"])
+def mini_app_challenge():
+    user_data, telegram_id = authenticated_user()
+
+    if not user_data:
+        return jsonify({
+            "ok": False,
+            "error": "Telegram authentication failed."
+        }), 401
+
+    user = ensure_user(
+        telegram_id,
+        user_data.get("username"),
+    )
+
+    if user is None:
+        return jsonify({
+            "ok": False,
+            "error": "Could not load your account."
+        }), 500
+
+    a = secrets.randbelow(9) + 1
+    b = secrets.randbelow(9) + 1
+    challenge_id = secrets.token_urlsafe(24)
+
+    with challenge_lock:
+        challenges[challenge_id] = {
+            "telegram_id": telegram_id,
+            "answer": a + b,
+            "expires": time.time() + 180,
+            "attempts": 0,
+        }
+
+    return jsonify({
+        "ok": True,
+        "challenge_id": challenge_id,
+        "question": f"What is {a} + {b}?",
+        "balance": user.get("balance", 0) or 0,
+    })
+
+
+@app.route("/api/answer", methods=["POST"])
+def mini_app_answer():
+    user_data, telegram_id = authenticated_user()
+
+    if not user_data:
+        return jsonify({
+            "ok": False,
+            "error": "Telegram authentication failed."
+        }), 401
+
+    body = request.get_json(silent=True) or {}
+    challenge_id = body.get("challenge_id")
+    submitted_answer = body.get("answer")
+
+    if not isinstance(challenge_id, str):
+        return jsonify({"ok": False, "error": "Invalid challenge."}), 400
+
+    try:
+        submitted_answer = int(submitted_answer)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Enter a valid number."}), 400
+
+    with challenge_lock:
+        challenge = challenges.get(challenge_id)
+
+        if not challenge or challenge["telegram_id"] != telegram_id:
+            return jsonify({
+                "ok": False,
+                "error": "Challenge not found. Start a new challenge."
+            }), 400
+
+        if time.time() > challenge["expires"]:
+            challenges.pop(challenge_id, None)
+            return jsonify({
+                "ok": False,
+                "error": "Challenge expired. Start a new one."
+            }), 400
+
+        challenge["attempts"] += 1
+
+        if challenge["attempts"] > 3:
+            challenges.pop(challenge_id, None)
+            return jsonify({
+                "ok": False,
+                "error": "Too many attempts. Start a new challenge."
+            }), 429
+
+        if submitted_answer != challenge["answer"]:
+            if challenge["attempts"] >= 3:
+                challenges.pop(challenge_id, None)
+
+            return jsonify({
+                "ok": False,
+                "error": "Incorrect answer. Try again."
+            }), 400
+
+        # Consume the challenge before awarding a reward so it
+        # cannot be submitted twice.
+        challenges.pop(challenge_id, None)
+
+    balance = add_one_coin(telegram_id)
+
+    if balance is None:
+        return jsonify({
+            "ok": False,
+            "error": "Could not save your reward. Please check your balance."
+        }), 500
+
+    return jsonify({
+        "ok": True,
+        "message": "Correct! 1 coin earned.",
+        "balance": balance,
+    })
+
+
+# =========================================================
+# TELEGRAM BOT COMMANDS
+# =========================================================
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message is None or update.effective_user is None:
         return
 
@@ -162,7 +394,7 @@ async def start(
     keyboard = [[
         InlineKeyboardButton(
             "🎮 Open Captcha Earn",
-            url="https://t.me/CaptchaEarnIndiaBot/earncoins",
+            url=MINI_APP_URL,
         )
     ]]
 
@@ -176,14 +408,7 @@ async def start(
     )
 
 
-# =========================================================
-# /BALANCE
-# =========================================================
-
-async def balance(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message is None or update.effective_user is None:
         return
 
@@ -205,14 +430,7 @@ async def balance(
     )
 
 
-# =========================================================
-# /TASK
-# =========================================================
-
-async def task(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message is None or update.effective_user is None:
         return
 
@@ -239,14 +457,7 @@ async def task(
     )
 
 
-# =========================================================
-# ANSWER AND REWARD
-# =========================================================
-
-async def answer(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message is None or update.effective_user is None:
         return
 
@@ -256,22 +467,17 @@ async def answer(
     expected = context.user_data.get("answer")
 
     if expected is None:
-        await update.message.reply_text(
-            "Please use /task first."
-        )
+        await update.message.reply_text("Please use /task first.")
         return
 
     try:
         submitted_answer = int(update.message.text.strip())
     except ValueError:
-        await update.message.reply_text(
-            "Please enter a number."
-        )
+        await update.message.reply_text("Please enter a number.")
         return
 
     if submitted_answer != expected:
         context.user_data.pop("answer", None)
-
         await update.message.reply_text(
             "❌ Incorrect answer.\nUse /task to try again."
         )
@@ -289,30 +495,9 @@ async def answer(
         )
         return
 
-    try:
-        old_balance = float(user.get("balance", 0) or 0)
-        new_balance = old_balance + 1
+    saved_balance = add_one_coin(telegram_id)
 
-        result = (
-            supabase.table("users")
-            .update({"balance": new_balance})
-            .eq("telegram_id", telegram_id)
-            .select("telegram_id", "balance")
-            .execute()
-        )
-
-        if not result.data:
-            await update.message.reply_text(
-                "The balance update could not be confirmed. "
-                "Please check /balance before trying again."
-            )
-            return
-
-        saved_balance = result.data[0].get("balance", new_balance)
-
-    except Exception as exc:
-        print("BALANCE UPDATE ERROR:", repr(exc))
-
+    if saved_balance is None:
         await update.message.reply_text(
             "Could not update your balance. Please try again later."
         )
@@ -327,14 +512,7 @@ async def answer(
     )
 
 
-# =========================================================
-# ERROR HANDLER
-# =========================================================
-
-async def error_handler(
-    update: object,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     print("TELEGRAM ERROR:", repr(context.error))
 
 
@@ -342,8 +520,19 @@ async def error_handler(
 # MAIN
 # =========================================================
 
+def run_flask():
+    port = int(os.environ.get("PORT", "10000"))
+
+    app.run(
+        host="0.0.0.0",
+        port=port,
+        debug=False,
+        use_reloader=False,
+        threaded=True,
+    )
+
+
 def main():
-    # Start Flask once, in a background thread.
     flask_thread = threading.Thread(
         target=run_flask,
         name="flask-server",
@@ -351,40 +540,27 @@ def main():
     )
     flask_thread.start()
 
-    # Configure Telegram handlers.
     application = Application.builder().token(BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("balance", balance))
     application.add_handler(CommandHandler("task", task))
-
     application.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            answer,
-        )
+        MessageHandler(filters.TEXT & ~filters.COMMAND, answer)
     )
-
     application.add_error_handler(error_handler)
 
-    # Python 3.14 compatibility:
-    # Explicitly create and install the event loop before polling.
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-    print("Event loop initialized.")
     print("Starting Telegram polling...")
 
     try:
-        application.run_polling(
-            drop_pending_updates=True,
-        )
+        application.run_polling(drop_pending_updates=True)
     finally:
         if not loop.is_closed():
             loop.close()
-
         asyncio.set_event_loop(None)
-        print("Telegram polling stopped.")
 
 
 if __name__ == "__main__":
