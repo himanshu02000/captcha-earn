@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -23,6 +24,7 @@
     .container { max-width: 440px; margin: auto; }
     .logo { font-size: 42px; text-align: center; margin: 12px 0; }
     h1 { text-align: center; margin-bottom: 8px; }
+    h2 { margin-top: 0; }
 
     .subtitle {
       text-align: center;
@@ -45,7 +47,7 @@
       margin-bottom: 16px;
     }
 
-    .muted { color: #aab7ca; font-size: 14px; }
+    .muted { color: #aab7ca; font-size: 14px; line-height: 1.5; }
 
     .balance {
       font-size: 32px;
@@ -76,15 +78,40 @@
     input {
       width: 100%;
       padding: 14px;
-      margin-top: 14px;
+      margin-top: 10px;
+      margin-bottom: 8px;
       border: 1px solid #42536c;
       border-radius: 10px;
       background: #101827;
       color: white;
-      font-size: 18px;
+      font-size: 16px;
     }
 
-    #message, #ad-message { margin-top: 14px; line-height: 1.5; }
+    label {
+      display: block;
+      margin-top: 14px;
+      font-size: 14px;
+      color: #d8e1ee;
+    }
+
+    #message, #ad-message, #withdraw-message {
+      margin-top: 14px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .developer-note {
+      margin-top: 18px;
+      padding: 14px;
+      border: 1px solid #42536c;
+      border-radius: 10px;
+      line-height: 1.5;
+    }
+
+    .developer-note h3 {
+      margin-top: 0;
+      font-size: 16px;
+    }
 
     footer {
       text-align: center;
@@ -140,12 +167,62 @@
 
     <section class="card">
       <h2>💸 Withdraw</h2>
+
       <p class="muted">
-        Withdrawal processing is not connected yet.
+        50 coins = ₹1. Your first five eligible withdrawals have a
+        minimum of 1,000 coins (₹20). After that, the minimum is
+        2,500 coins (₹50).
       </p>
-      <button class="secondary" type="button" disabled>
-        Withdraw — coming soon
-      </button>
+
+      <p class="muted">
+        Payments are made through UPI. Every request is manually reviewed.
+      </p>
+
+      <form id="withdraw-form">
+        <label for="withdraw-coins">Coins to withdraw</label>
+        <input
+          id="withdraw-coins"
+          type="number"
+          inputmode="numeric"
+          min="1000"
+          step="50"
+          placeholder="Enter coins, e.g. 1000"
+          required
+        >
+
+        <label for="upi-id">Your UPI ID</label>
+        <input
+          id="upi-id"
+          type="text"
+          maxlength="200"
+          placeholder="e.g. name@bank"
+          autocomplete="off"
+          required
+        >
+
+        <p id="withdraw-estimate" class="muted">
+          Enter a coin amount to see the payout.
+        </p>
+
+        <button id="withdraw-button" type="submit">
+          Submit withdrawal request
+        </button>
+
+        <p id="withdraw-message" role="status" aria-live="polite"></p>
+      </form>
+
+      <div class="developer-note">
+        <h3>💡 Developer Note</h3>
+        <p>
+          We believe in rewarding genuine users for their hard work.
+          Complete tasks seriously. We aim to provide 100% payout
+          on eligible earnings.
+        </p>
+        <p>
+          We are currently paying <strong>78 active users</strong>.
+          Keep completing tasks regularly and build your balance for withdrawal.
+        </p>
+      </div>
     </section>
 
     <footer>Captcha Earn • Points and rewards</footer>
@@ -164,10 +241,18 @@
     const adButton = document.getElementById("ad-button");
     const adMessage = document.getElementById("ad-message");
 
+    const withdrawForm = document.getElementById("withdraw-form");
+    const withdrawCoins = document.getElementById("withdraw-coins");
+    const upiInput = document.getElementById("upi-id");
+    const withdrawButton = document.getElementById("withdraw-button");
+    const withdrawMessage = document.getElementById("withdraw-message");
+    const withdrawEstimate = document.getElementById("withdraw-estimate");
+
     let initData = "";
     let challengeId = null;
     let busy = false;
     let adBusy = false;
+    let withdrawBusy = false;
     let adController = null;
 
     if (telegramApp) {
@@ -208,6 +293,7 @@
     async function refreshBalance() {
       const result = await apiRequest("/api/session", {});
       balanceElement.textContent = result.balance;
+      updateWithdrawalEstimate();
       return Number(result.balance);
     }
 
@@ -226,6 +312,7 @@
         challengeId = result.challenge_id;
         questionElement.textContent = result.question;
         balanceElement.textContent = result.balance;
+        updateWithdrawalEstimate();
       } catch (error) {
         questionElement.textContent = "Could not load a challenge.";
         messageElement.textContent = error.message;
@@ -254,6 +341,7 @@
         });
 
         balanceElement.textContent = result.balance;
+        updateWithdrawalEstimate();
         messageElement.textContent = result.message;
         challengeId = null;
         questionElement.textContent =
@@ -293,7 +381,6 @@
         }
 
         const previousBalance = Number(balanceElement.textContent);
-
         await adController.show();
 
         adMessage.textContent =
@@ -315,25 +402,112 @@
               break;
             }
           } catch (error) {
-            // Try refreshing again.
+            // Retry balance refresh.
           }
         }
 
-        if (rewardArrived) {
-          adMessage.textContent =
-            "Reward received! Your balance has been updated.";
-        } else {
-          adMessage.textContent =
-            "The ad finished, but the reward is not visible yet. " +
-            "Please check your balance again shortly.";
-        }
+        adMessage.textContent = rewardArrived
+          ? "Reward received! Your balance has been updated."
+          : "The ad finished, but the reward is not visible yet. Please check again shortly.";
       } catch (error) {
         adMessage.textContent =
-          "The ad was not completed or could not be shown. " +
-          "Please try again later.";
+          "The ad was not completed or could not be shown. Please try again later.";
       } finally {
         adBusy = false;
         adButton.disabled = false;
+      }
+    }
+
+    function updateWithdrawalEstimate() {
+      const rawCoins = withdrawCoins.value.trim();
+      const coins = Number(rawCoins);
+      const balance = Number(balanceElement.textContent);
+
+      if (!rawCoins || !Number.isFinite(coins) || coins <= 0) {
+        withdrawEstimate.textContent =
+          "50 coins = ₹1. Available balance: " +
+          (Number.isFinite(balance) ? balance : "—") + " coins.";
+        return;
+      }
+
+      withdrawEstimate.textContent =
+        "Estimated payout: ₹" + (coins / 50).toFixed(2) +
+        ". Available balance: " +
+        (Number.isFinite(balance) ? balance : "—") + " coins.";
+    }
+
+    async function submitWithdrawal(event) {
+      event.preventDefault();
+
+      if (withdrawBusy) return;
+
+      if (!telegramApp || !initData) {
+        withdrawMessage.textContent =
+          "Open this Mini App through your Telegram bot first.";
+        return;
+      }
+
+      const rawCoins = withdrawCoins.value.trim();
+      const coins = Number(rawCoins);
+      const upi = upiInput.value.trim();
+      const balance = Number(balanceElement.textContent);
+
+      if (!/^\d+$/.test(rawCoins) || !Number.isSafeInteger(coins)) {
+        withdrawMessage.textContent =
+          "Enter a valid whole number of coins.";
+        return;
+      }
+
+      if (coins % 50 !== 0) {
+        withdrawMessage.textContent =
+          "The amount must be a multiple of 50 coins.";
+        return;
+      }
+
+      if (coins > balance) {
+        withdrawMessage.textContent =
+          "You do not have enough coins for this withdrawal.";
+        return;
+      }
+
+      if (!upi || /\s/.test(upi) || upi.length < 3 || upi.length > 200) {
+        withdrawMessage.textContent =
+          "Enter a valid UPI ID without spaces.";
+        return;
+      }
+
+      const confirmed = window.confirm(
+        "Request withdrawal of " + coins + " coins (₹" +
+        (coins / 50).toFixed(2) + ") to UPI ID " + upi + "?"
+      );
+
+      if (!confirmed) return;
+
+      withdrawBusy = true;
+      withdrawButton.disabled = true;
+      withdrawMessage.textContent = "Submitting your withdrawal request...";
+
+      try {
+        const result = await apiRequest("/api/withdraw", {
+          coins: coins,
+          upi: upi
+        });
+
+        withdrawMessage.textContent =
+          "✅ " + result.message +
+          " Request ID: " + result.withdrawal_id +
+          ". Amount: ₹" + Number(result.amount_inr).toFixed(2) +
+          ". Status: Pending.";
+
+        withdrawCoins.value = "";
+        upiInput.value = "";
+        await refreshBalance();
+      } catch (error) {
+        withdrawMessage.textContent = error.message;
+      } finally {
+        withdrawBusy = false;
+        withdrawButton.disabled = false;
+        updateWithdrawalEstimate();
       }
     }
 
@@ -348,6 +522,7 @@
         submitButton.disabled = true;
         newButton.disabled = true;
         adButton.disabled = true;
+        withdrawButton.disabled = true;
         return;
       }
 
@@ -357,11 +532,13 @@
         const result = await apiRequest("/api/session", {});
         welcome.textContent = "Welcome, " + (result.name || "User") + "!";
         balanceElement.textContent = result.balance;
+        updateWithdrawalEstimate();
       } catch (error) {
         welcome.textContent = "Could not connect to your account.";
         questionElement.textContent = "Challenge unavailable.";
         messageElement.textContent = error.message;
         setBusy(false);
+        withdrawButton.disabled = true;
         return;
       }
 
@@ -372,6 +549,8 @@
     submitButton.addEventListener("click", checkAnswer);
     newButton.addEventListener("click", loadChallenge);
     adButton.addEventListener("click", watchAd);
+    withdrawForm.addEventListener("submit", submitWithdrawal);
+    withdrawCoins.addEventListener("input", updateWithdrawalEstimate);
 
     answerInput.addEventListener("keydown", event => {
       if (event.key === "Enter") checkAnswer();
