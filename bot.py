@@ -30,8 +30,6 @@ BOT_TOKEN = os.environ["BOT_TOKEN"]
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SECRET_KEY = os.environ["SUPABASE_SECRET_KEY"]
 
-# Set this in Render Environment Variables.
-# Do not put it in index.html or share it publicly.
 ADSGRAM_CALLBACK_SECRET = os.environ.get(
     "ADSGRAM_CALLBACK_SECRET", ""
 )
@@ -43,7 +41,6 @@ print("Starting Captcha Earn Bot...")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
 
-# Temporary challenge storage. Challenges are lost on restart.
 challenges = {}
 challenge_lock = threading.Lock()
 
@@ -190,9 +187,7 @@ def create_user(update):
 
 def add_one_coin(telegram_id):
     """
-    Basic balance update for the prototype.
-    Use an atomic database operation before issuing
-    significant or redeemable rewards.
+    Existing prototype balance logic.
     """
     user = get_user(telegram_id)
 
@@ -236,7 +231,7 @@ def health():
 
 
 # =========================================================
-# MINI APP API
+# MINI APP SESSION
 # =========================================================
 
 @app.route("/api/session", methods=["POST"])
@@ -266,6 +261,10 @@ def mini_app_session():
         "balance": user.get("balance", 0) or 0,
     })
 
+
+# =========================================================
+# CAPTCHA CHALLENGE
+# =========================================================
 
 @app.route("/api/challenge", methods=["POST"])
 def mini_app_challenge():
@@ -388,15 +387,156 @@ def mini_app_answer():
 
 
 # =========================================================
+# WITHDRAWAL API
+# =========================================================
+
+@app.route("/api/withdraw", methods=["POST"])
+def request_withdrawal():
+    user_data, telegram_id = authenticated_user()
+
+    if not user_data:
+        return jsonify({
+            "ok": False,
+            "error": "Telegram authentication failed. Reopen the app from Telegram."
+        }), 401
+
+    body = request.get_json(silent=True) or {}
+    raw_coins = body.get("coins")
+    upi = body.get("upi")
+
+    # Accept only whole-number coin amounts.
+    if isinstance(raw_coins, bool):
+        return jsonify({
+            "ok": False,
+            "error": "Enter a valid coin amount."
+        }), 400
+
+    try:
+        coins = int(raw_coins)
+    except (TypeError, ValueError, OverflowError):
+        return jsonify({
+            "ok": False,
+            "error": "Enter a valid whole number of coins."
+        }), 400
+
+    # Reject decimal values instead of silently rounding.
+    if isinstance(raw_coins, float) and not raw_coins.is_integer():
+        return jsonify({
+            "ok": False,
+            "error": "Enter a whole number of coins."
+        }), 400
+
+    if isinstance(raw_coins, str) and str(coins) != raw_coins.strip():
+        return jsonify({
+            "ok": False,
+            "error": "Enter a valid whole number of coins."
+        }), 400
+
+    if coins <= 0 or coins > 1000000000:
+        return jsonify({
+            "ok": False,
+            "error": "Invalid withdrawal amount."
+        }), 400
+
+    if coins % 50 != 0:
+        return jsonify({
+            "ok": False,
+            "error": "The amount must be a multiple of 50 coins."
+        }), 400
+
+    if not isinstance(upi, str):
+        return jsonify({
+            "ok": False,
+            "error": "Enter your UPI ID."
+        }), 400
+
+    upi = upi.strip()
+
+    if (
+        len(upi) < 3
+        or len(upi) > 200
+        or any(character.isspace() for character in upi)
+    ):
+        return jsonify({
+            "ok": False,
+            "error": "Enter a valid UPI ID without spaces."
+        }), 400
+
+    try:
+        result = supabase.rpc(
+            "create_withdrawal",
+            {
+                "p_telegram_id": telegram_id,
+                "p_coins": coins,
+                "p_upi": upi,
+            },
+        ).execute()
+
+        withdrawal_id = result.data
+
+        if isinstance(withdrawal_id, list) and withdrawal_id:
+            withdrawal_id = withdrawal_id[0]
+
+        return jsonify({
+            "ok": True,
+            "message": "Withdrawal request submitted successfully!",
+            "withdrawal_id": withdrawal_id,
+            "coins": coins,
+            "amount_inr": coins / 50,
+            "status": "pending",
+        }), 200
+
+    except Exception as exc:
+        print("WITHDRAWAL ERROR:", repr(exc))
+        error_text = str(exc)
+
+        if "Minimum withdrawal is" in error_text:
+            return jsonify({
+                "ok": False,
+                "error": (
+                    "Your minimum withdrawal is 1,000 coins for "
+                    "your first five eligible requests, then 2,500 coins."
+                )
+            }), 400
+
+        if "Insufficient balance" in error_text:
+            return jsonify({
+                "ok": False,
+                "error": "You don't have enough coins for this withdrawal."
+            }), 400
+
+        if "multiple of 50" in error_text:
+            return jsonify({
+                "ok": False,
+                "error": "The amount must be a multiple of 50 coins."
+            }), 400
+
+        if "Invalid UPI details" in error_text:
+            return jsonify({
+                "ok": False,
+                "error": "Please enter valid UPI details."
+            }), 400
+
+        if "User account not found" in error_text:
+            return jsonify({
+                "ok": False,
+                "error": "Your account was not found. Reopen the app and try again."
+            }), 400
+
+        return jsonify({
+            "ok": False,
+            "error": "We couldn't submit your withdrawal. Please try again later."
+        }), 500
+
+
+# =========================================================
 # ADSGRAM REWARD CALLBACK
 # =========================================================
 
 @app.route("/api/adsgram/reward", methods=["GET"])
 def adsgram_reward():
     """
-    AdsGram Reward URL callback.
-
-    Configure the URL in AdsGram using:
+    Configure the AdsGram callback URL using your Render domain:
     https://YOUR-RENDER-DOMAIN/api/adsgram/reward?userId=[userId]&token=YOUR_SECRET
 
     The token must match ADSGRAM_CALLBACK_SECRET in Render.
@@ -432,7 +572,6 @@ def adsgram_reward():
             "error": "Invalid userId."
         }), 400
 
-    # Only reward an account that already exists.
     user = get_user(telegram_id)
 
     if user is None:
