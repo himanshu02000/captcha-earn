@@ -36,6 +36,7 @@ ADSGRAM_CALLBACK_SECRET = os.environ.get(
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MINI_APP_URL = "https://t.me/CaptchaEarnIndiaBot/earncoins"
+CHANNEL_URL = "https://t.me/CaptchaEarnIndiaOfficial"
 
 print("Starting Captcha Earn Bot...")
 
@@ -404,7 +405,6 @@ def request_withdrawal():
     raw_coins = body.get("coins")
     upi = body.get("upi")
 
-    # Accept only whole-number coin amounts.
     if isinstance(raw_coins, bool):
         return jsonify({
             "ok": False,
@@ -419,7 +419,6 @@ def request_withdrawal():
             "error": "Enter a valid whole number of coins."
         }), 400
 
-    # Reject decimal values instead of silently rounding.
     if isinstance(raw_coins, float) and not raw_coins.is_integer():
         return jsonify({
             "ok": False,
@@ -623,11 +622,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]]
 
     await update.message.reply_text(
-        "🤖 Welcome to Captcha Earn!\n\n"
-        "Complete verification tasks to earn points.\n\n"
-        "/task - Start a task\n"
-        "/balance - Check your balance\n\n"
-        f"💰 Your balance: {amount} points",
+        "💰 Welcome to Captcha Earn India!\n\n"
+        "Earn coins in your free time by solving CAPTCHAs "
+        "and watching available ads.\n\n"
+        "✅ Complete tasks and earn coins\n"
+        "⏰ Work at your own pace\n"
+        "💸 Submit withdrawal requests through UPI when eligible\n\n"
+        "📢 Payment updates and verified withdrawal proofs:\n"
+        f"{CHANNEL_URL}\n\n"
+        "⏳ The app may take 30–60 seconds to load after "
+        "inactivity. Please wait patiently.\n\n"
+        "🚀 Tap below to get started!\n\n"
+        f"💰 Your balance: {amount} coins\n\n"
+        "⚠️ Withdrawals are subject to eligibility and approval.",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
