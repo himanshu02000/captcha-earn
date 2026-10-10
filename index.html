@@ -160,6 +160,7 @@
       <h2>📺 Watch ads</h2>
       <p class="muted">
         Complete a reward ad to qualify for an additional coin.
+        Ads may not always be available.
       </p>
       <button id="ad-button" type="button">Watch an ad</button>
       <p id="ad-message" role="status" aria-live="polite"></p>
@@ -334,6 +335,8 @@
       setBusy(true);
       messageElement.textContent = "Checking your answer...";
 
+      let shouldShowAd = false;
+
       try {
         const result = await apiRequest("/api/answer", {
           challenge_id: challengeId,
@@ -342,7 +345,20 @@
 
         balanceElement.textContent = result.balance;
         updateWithdrawalEstimate();
-        messageElement.textContent = result.message;
+        messageElement.textContent = result.message || "Answer checked.";
+
+        // Only attempt an ad when the server indicates the answer
+        // was correct, or its message clearly confirms success.
+        const successMessage =
+          typeof result.message === "string" &&
+          (
+            /\bcorrect\b/i.test(result.message) ||
+            /\byou earned\b/i.test(result.message) ||
+            /\bearned \d+ coins?\b/i.test(result.message)
+          );
+
+        shouldShowAd = result.correct === true || successMessage;
+
         challengeId = null;
         questionElement.textContent =
           "Challenge completed! Start another one to continue.";
@@ -351,6 +367,13 @@
         messageElement.textContent = error.message;
       } finally {
         setBusy(false);
+      }
+
+      // The CAPTCHA coins have already been credited by the server.
+      // An ad failure must not undo those coins.
+      if (shouldShowAd) {
+        adMessage.textContent = "Opening a reward ad...";
+        await watchAd();
       }
     }
 
@@ -365,13 +388,12 @@
 
       if (!window.Adsgram || typeof window.Adsgram.init !== "function") {
         adMessage.textContent =
-          "The ad service did not load. Please try again later.";
+          "The ad service did not load. Your CAPTCHA reward is safe.";
         return;
       }
 
       adBusy = true;
       adButton.disabled = true;
-      adMessage.textContent = "Loading reward ad...";
 
       try {
         if (!adController) {
@@ -381,6 +403,7 @@
         }
 
         const previousBalance = Number(balanceElement.textContent);
+
         await adController.show();
 
         adMessage.textContent =
@@ -411,7 +434,7 @@
           : "The ad finished, but the reward is not visible yet. Please check again shortly.";
       } catch (error) {
         adMessage.textContent =
-          "The ad was not completed or could not be shown. Please try again later.";
+          "No ad could be shown or the ad was not completed. Your CAPTCHA coins are safe.";
       } finally {
         adBusy = false;
         adButton.disabled = false;
@@ -494,8 +517,7 @@
         });
 
         withdrawMessage.textContent =
-          "✅ " + result.message +
-          " Request ID: " + result.withdrawal_id +
+          "Request submitted. Request ID: " + result.withdrawal_id +
           ". Amount: ₹" + Number(result.amount_inr).toFixed(2) +
           ". Status: Pending.";
 
