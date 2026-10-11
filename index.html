@@ -11,20 +11,17 @@
 
   <style>
     * { box-sizing: border-box; }
-
     body {
       margin: 0;
       background: #eef5fc;
       color: #172b4d;
       font-family: Arial, Helvetica, sans-serif;
     }
-
     .header {
       background: linear-gradient(135deg, #1769d3, #2c7be5);
       color: white;
       padding: 22px 18px;
     }
-
     .header-inner {
       max-width: 720px;
       margin: auto;
@@ -33,14 +30,12 @@
       justify-content: space-between;
       gap: 14px;
     }
-
     .brand {
       display: flex;
       align-items: center;
       gap: 12px;
       min-width: 0;
     }
-
     .brand-icon {
       width: 48px;
       height: 48px;
@@ -51,18 +46,8 @@
       font-size: 27px;
       flex-shrink: 0;
     }
-
-    .brand h1 {
-      margin: 0;
-      font-size: 22px;
-    }
-
-    .brand p {
-      margin: 5px 0 0;
-      font-size: 12px;
-      opacity: .88;
-    }
-
+    .brand h1 { margin: 0; font-size: 22px; }
+    .brand p { margin: 5px 0 0; font-size: 12px; opacity: .88; }
     .balance-pill {
       background: rgba(7,43,96,.42);
       border-radius: 18px;
@@ -70,25 +55,13 @@
       text-align: right;
       white-space: nowrap;
     }
-
-    .balance-pill span {
-      display: block;
-      font-size: 11px;
-      opacity: .9;
-    }
-
-    .balance-pill strong {
-      display: block;
-      margin-top: 2px;
-      font-size: 18px;
-    }
-
+    .balance-pill span { display: block; font-size: 11px; opacity: .9; }
+    .balance-pill strong { display: block; margin-top: 2px; font-size: 18px; }
     .container {
       max-width: 720px;
       margin: 20px auto;
       padding: 0 14px 30px;
     }
-
     .welcome {
       text-align: center;
       color: #2874d5;
@@ -96,7 +69,6 @@
       margin: 0 0 14px;
       overflow-wrap: anywhere;
     }
-
     .card {
       background: white;
       border: 1px solid #dce8f5;
@@ -105,32 +77,24 @@
       margin-bottom: 16px;
       box-shadow: 0 8px 28px rgba(25,70,120,.08);
     }
-
-    .card h2 {
-      margin: 0 0 8px;
-      font-size: 20px;
-    }
-
+    .card h2 { margin: 0 0 8px; font-size: 20px; }
     .muted {
       color: #6b7c93;
       font-size: 14px;
       line-height: 1.55;
     }
-
     .balance-card {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 15px;
     }
-
     .balance-number {
       font-size: 32px;
       font-weight: 800;
       color: #1769d3;
       margin-top: 4px;
     }
-
     .coin-icon {
       width: 58px;
       height: 58px;
@@ -141,13 +105,11 @@
       font-size: 29px;
       flex-shrink: 0;
     }
-
     .captcha-title {
       display: flex;
       align-items: center;
       gap: 12px;
     }
-
     .shield {
       width: 46px;
       height: 46px;
@@ -158,7 +120,6 @@
       font-size: 23px;
       flex-shrink: 0;
     }
-
     .captcha-box {
       margin: 18px 0 12px;
       border: 2px solid #d4e0ee;
@@ -166,7 +127,6 @@
       overflow: hidden;
       background: #f7fafc;
     }
-
     #captcha-image {
       display: block;
       width: 100%;
@@ -174,7 +134,6 @@
       min-height: 100px;
       object-fit: contain;
     }
-
     input {
       width: 100%;
       padding: 14px;
@@ -185,12 +144,10 @@
       font-size: 17px;
       outline: none;
     }
-
     input:focus {
       border-color: #287be5;
       box-shadow: 0 0 0 3px rgba(40,123,229,.12);
     }
-
     button {
       width: 100%;
       border: 0;
@@ -203,17 +160,14 @@
       font-weight: 700;
       cursor: pointer;
     }
-
     button.secondary {
       background: #edf4fc;
       color: #1769d3;
     }
-
     button:disabled {
       opacity: .55;
       cursor: not-allowed;
     }
-
     .refresh {
       text-align: center;
       margin: 13px 0 0;
@@ -222,7 +176,6 @@
       cursor: pointer;
       font-size: 14px;
     }
-
     .reward-strip {
       margin-top: 18px;
       padding: 13px;
@@ -232,43 +185,27 @@
       align-items: center;
       gap: 13px;
     }
-
     .reward-strip strong {
       color: #198754;
       font-size: 20px;
     }
-
-    #message,
-    #ad-message,
-    #withdraw-message,
-    #auto-bot-status {
+    #message, #ad-message, #withdraw-message, #auto-bot-status {
       margin-top: 12px;
       line-height: 1.5;
       overflow-wrap: anywhere;
     }
-
-    .developer-note {
-      margin-top: 17px;
-      padding: 13px;
-      border: 1px solid #dce8f5;
-      border-radius: 13px;
-      line-height: 1.5;
-    }
-
     label {
       display: block;
       margin: 14px 0 7px;
       font-size: 14px;
       font-weight: 700;
     }
-
     footer {
       text-align: center;
       color: #8191a7;
       font-size: 12px;
       margin-top: 22px;
     }
-
     .demo-captcha {
       padding: 30px 10px;
       text-align: center;
@@ -278,14 +215,12 @@
       color: #1769d3;
       overflow-wrap: anywhere;
     }
-
     .countdown {
       text-align: center;
       font-size: 32px;
       font-weight: 800;
       margin: 16px 0 4px;
     }
-
     .demo-label {
       display: inline-block;
       padding: 5px 9px;
@@ -296,29 +231,15 @@
       font-weight: 700;
       margin-bottom: 10px;
     }
-
     @media (max-width: 520px) {
-      .header-inner {
-        align-items: flex-start;
-      }
-
-      .brand h1 {
-        font-size: 18px;
-      }
-
-      .balance-pill strong {
-        font-size: 16px;
-      }
-
-      .balance-pill {
-        padding: 8px 10px;
-      }
+      .header-inner { align-items: flex-start; }
+      .brand h1 { font-size: 18px; }
+      .balance-pill strong { font-size: 16px; }
+      .balance-pill { padding: 8px 10px; }
     }
   </style>
 </head>
-
 <body>
-
 <header class="header">
   <div class="header-inner">
     <div class="brand">
@@ -328,7 +249,6 @@
         <p>Solve CAPTCHA • Earn Coins • Withdraw</p>
       </div>
     </div>
-
     <div class="balance-pill">
       <span>Balance</span>
       <strong><span id="top-balance">—</span> Coins</strong>
@@ -337,17 +257,12 @@
 </header>
 
 <main class="container">
-
-  <p id="welcome" class="welcome" role="status">
-    Connecting to your account...
-  </p>
+  <p id="welcome" class="welcome" role="status">Connecting to your account...</p>
 
   <section class="card balance-card">
     <div>
       <div class="muted">Your current balance</div>
-      <div class="balance-number">
-        <span id="balance">—</span> Coins
-      </div>
+      <div class="balance-number"><span id="balance">—</span> Coins</div>
     </div>
     <div class="coin-icon">🪙</div>
   </section>
@@ -357,41 +272,19 @@
       <div class="shield">🛡️</div>
       <div>
         <h2>Solve CAPTCHA</h2>
-        <div class="muted">
-          Enter the characters you see in the image.
-        </div>
+        <div class="muted">Enter the characters you see in the image.</div>
       </div>
     </div>
-
-    <p class="muted">
-      Solve the challenge to earn 1 coin.
-    </p>
-
+    <p class="muted">Solve the challenge to earn 1 coin.</p>
     <div class="captcha-box">
       <img id="captcha-image" alt="CAPTCHA challenge">
     </div>
-
-    <input
-      id="answer"
-      type="text"
-      inputmode="text"
-      maxlength="5"
-      placeholder="Enter the 5 characters"
-      autocomplete="off"
-      autocapitalize="characters"
-      spellcheck="false"
-    >
-
-    <button id="submit-button" type="button" disabled>
-      Submit CAPTCHA
-    </button>
-
-    <div id="new-button" class="refresh" role="button" tabindex="0">
-      ↻ Get a new CAPTCHA
-    </div>
-
+    <input id="answer" type="text" inputmode="text" maxlength="5"
+           placeholder="Enter the 5 characters" autocomplete="off"
+           autocapitalize="characters" spellcheck="false">
+    <button id="submit-button" type="button" disabled>Submit CAPTCHA</button>
+    <div id="new-button" class="refresh" role="button" tabindex="0">↻ Get a new CAPTCHA</div>
     <p id="message" role="status" aria-live="polite"></p>
-
     <div class="reward-strip">
       <div class="coin-icon">🪙</div>
       <div>
@@ -403,111 +296,49 @@
 
   <section class="card" id="auto-bot-card">
     <h2>🤖 Auto-Solve CAPTCHA</h2>
-
     <span class="demo-label">DEMO MODE — NO COINS EARNED</span>
-
-    <p class="muted">
-      Watch an automated CAPTCHA demonstration with a 10-second countdown.
-      This demonstration does not submit answers or change your balance.
-    </p>
-
+    <p class="muted">Watch an automated CAPTCHA demonstration with a 10-second countdown. This demonstration does not submit answers or change your balance.</p>
     <div class="captcha-box">
       <div id="auto-captcha-display" class="demo-captcha">READY</div>
     </div>
-
-    <p id="auto-bot-status" class="muted" role="status" aria-live="polite">
-      Tap Start Bot to begin the demo.
-    </p>
-
-    <div class="countdown">
-      <span id="auto-countdown">10</span>s
-    </div>
-
-    <button id="auto-start-button" type="button" disabled>
-      ▶ Start Bot
-    </button>
-
-    <button id="auto-stop-button" class="secondary" type="button" disabled>
-      ■ Stop Bot
-    </button>
+    <p id="auto-bot-status" class="muted" role="status" aria-live="polite">Tap Start Bot to begin the demo.</p>
+    <div class="countdown"><span id="auto-countdown">10</span>s</div>
+    <button id="auto-start-button" type="button" disabled>▶ Start Bot</button>
+    <button id="auto-stop-button" class="secondary" type="button" disabled>■ Stop Bot</button>
   </section>
 
   <section class="card">
     <h2>📺 Watch Ads</h2>
-
-    <p class="muted">
-      Watch an available rewarded advertisement to earn an additional coin.
-      Ads may not always be available.
-    </p>
-
-    <button id="ad-button" type="button" disabled>
-      Watch an Ad
-    </button>
-
-    <p id="ad-message" role="status" aria-live="polite">
-      Checking ad reward availability...
-    </p>
+    <p class="muted">Watch an available rewarded advertisement to earn an additional coin. Ads may not always be available.</p>
+    <button id="ad-button" type="button" disabled>Watch an Ad</button>
+    <p id="ad-message" role="status" aria-live="polite">Ad rewards are temporarily unavailable.</p>
   </section>
 
   <section class="card">
     <h2>💸 Withdraw</h2>
-
-    <p class="muted">
-      50 coins = ₹1. Your first five eligible withdrawals have a minimum
-      of 1,000 coins (₹20). After that, the minimum is 2,500 coins (₹50).
-    </p>
-
-    <p class="muted">
-      Payments are made through UPI. Every request is manually reviewed.
-    </p>
-
+    <p class="muted">50 coins = ₹1. Your first five eligible withdrawals have a minimum of 1,000 coins (₹20). After that, the minimum is 2,500 coins (₹50).</p>
+    <p class="muted">Payments are made through UPI. Every request is manually reviewed.</p>
     <form id="withdraw-form">
       <label for="withdraw-coins">Coins to withdraw</label>
-      <input
-        id="withdraw-coins"
-        type="number"
-        min="1000"
-        step="50"
-        placeholder="e.g. 1000"
-        required
-      >
-
+      <input id="withdraw-coins" type="number" min="1000" step="50" placeholder="e.g. 1000" required>
       <label for="withdraw-upi">Your UPI ID</label>
-      <input
-        id="withdraw-upi"
-        type="text"
-        maxlength="100"
-        placeholder="example@upi"
-        autocomplete="off"
-        required
-      >
-
-      <button id="withdraw-button" type="submit" disabled>
-        Submit Withdrawal Request
-      </button>
-
+      <input id="withdraw-upi" type="text" maxlength="100" placeholder="example@upi" autocomplete="off" required>
+      <button id="withdraw-button" type="submit" disabled>Submit Withdrawal Request</button>
       <p id="withdraw-message" role="status" aria-live="polite"></p>
     </form>
   </section>
 
-  <footer>
-    Captcha Earn India · Earn responsibly
-  </footer>
-
+  <footer>Captcha Earn India · Earn responsibly</footer>
 </main>
 
 <script>
 (() => {
   "use strict";
 
-  // Render backend URL for this project.
   const API_BASE = "https://captcha-earning-bot.onrender.com";
   const ADSGRAM_BLOCK_ID = "53035";
 
-  const tg = window.Telegram && window.Telegram.WebApp
-    ? window.Telegram.WebApp
-    : null;
-
+  const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
   const $ = (id) => document.getElementById(id);
 
   const state = {
@@ -523,20 +354,14 @@
   function setMessage(id, message, isError = false) {
     const element = $(id);
     if (!element) return;
-
     element.textContent = message;
     element.style.color = isError ? "#c0392b" : "#2874d5";
   }
 
   function setBalance(value) {
     const balance = Number(value);
-
-    if (!Number.isFinite(balance) || balance < 0) {
-      return;
-    }
-
+    if (!Number.isFinite(balance) || balance < 0) return;
     state.balance = balance;
-
     $("balance").textContent = balance.toLocaleString("en-IN");
     $("top-balance").textContent = balance.toLocaleString("en-IN");
   }
@@ -546,21 +371,11 @@
     const hasChallenge = Boolean(state.challengeId);
     const hasBalance = Number.isFinite(state.balance);
 
-    $("submit-button").disabled =
-      !connected || !hasChallenge || state.busy || state.demoRunning;
-
-    $("new-button").style.pointerEvents =
-      state.busy || state.demoRunning ? "none" : "auto";
-
-    $("new-button").style.opacity =
-      state.busy || state.demoRunning ? ".5" : "1";
-
-    $("withdraw-button").disabled =
-      !connected || !hasBalance || state.busy;
-
-    $("auto-start-button").disabled =
-      !connected || state.demoRunning || state.busy;
-
+    $("submit-button").disabled = !connected || !hasChallenge || state.busy || state.demoRunning;
+    $("new-button").style.pointerEvents = state.busy || state.demoRunning ? "none" : "auto";
+    $("new-button").style.opacity = state.busy || state.demoRunning ? ".5" : "1";
+    $("withdraw-button").disabled = !connected || !hasBalance || state.busy;
+    $("auto-start-button").disabled = !connected || state.demoRunning || state.busy;
     $("auto-stop-button").disabled = !state.demoRunning;
   }
 
@@ -569,39 +384,25 @@
       "Content-Type": "application/json",
       ...(options.headers || {})
     };
-
     const response = await fetch(API_BASE + path, {
       method: options.method || "POST",
       headers,
-      body: options.body === undefined
-        ? undefined
-        : JSON.stringify(options.body)
+      body: options.body === undefined ? undefined : JSON.stringify(options.body)
     });
-
     const raw = await response.text();
     let data = {};
-
-    try {
-      data = raw ? JSON.parse(raw) : {};
-    } catch {
-      data = { message: raw };
-    }
-
+    try { data = raw ? JSON.parse(raw) : {}; } catch { data = { message: raw }; }
     if (!response.ok) {
-      throw new Error(
-        data.error || data.message ||
-        `Request failed (HTTP ${response.status})`
-      );
+      throw new Error(data.error || data.message || `Request failed (HTTP ${response.status})`);
     }
-
     return data;
   }
 
   function showCaptchaImage(data) {
     const image = $("captcha-image");
-
-    // The backend may return an image URL, a data URL, or SVG markup.
+    // FIXED: now also accepts captcha_svg from backend
     const candidate =
+      data.captcha_svg ??
       data.image_url ??
       data.image ??
       data.svg ??
@@ -615,38 +416,23 @@
 
     if (typeof candidate !== "string" || !candidate.trim()) {
       image.removeAttribute("src");
-      throw new Error(
-        "The server did not return a CAPTCHA image. Check the challenge API response."
-      );
+      throw new Error("The server did not return a CAPTCHA image.");
     }
 
     const value = candidate.trim();
 
-    if (
-      value.startsWith("https://") ||
-      value.startsWith("http://") ||
-      value.startsWith("data:image/")
-    ) {
+    if (value.startsWith("https://") || value.startsWith("http://") || value.startsWith("data:image/")) {
       image.src = value;
     } else if (value.startsWith("<svg")) {
-      const blob = new Blob([value], {
-        type: "image/svg+xml;charset=utf-8"
-      });
-
+      const blob = new Blob([value], { type: "image/svg+xml;charset=utf-8" });
       state.captchaObjectUrl = URL.createObjectURL(blob);
       image.src = state.captchaObjectUrl;
     } else {
-      throw new Error(
-        "The CAPTCHA response format was not recognized."
-      );
+      throw new Error("The CAPTCHA response format was not recognized.");
     }
 
     image.onerror = () => {
-      setMessage(
-        "message",
-        "The CAPTCHA image could not be displayed. Please refresh the challenge.",
-        true
-      );
+      setMessage("message", "The CAPTCHA image could not be displayed. Please refresh.", true);
     };
   }
 
@@ -655,55 +441,34 @@
       method: "POST",
       body: { initData: state.initData }
     });
-
-    if (data.balance !== undefined) {
-      setBalance(data.balance);
-    }
-
-    const username =
-      data.username ||
-      (tg && tg.initDataUnsafe && tg.initDataUnsafe.user
-        ? tg.initDataUnsafe.user.first_name
-        : "");
-
+    if (data.balance !== undefined) setBalance(data.balance);
+    const username = data.name || data.username ||
+      (tg && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user.first_name : "");
     $("welcome").textContent = username
       ? `Welcome, ${username}! Your account is connected.`
       : "Your account is connected.";
-
     updateControls();
     return data;
   }
 
   async function loadChallenge() {
     if (!state.initData || state.busy || state.demoRunning) return;
-
     state.busy = true;
     updateControls();
     setMessage("message", "Loading a new CAPTCHA...");
-
     try {
       const data = await api("/api/challenge", {
         method: "POST",
         body: { initData: state.initData }
       });
-
       const challengeId = data.challenge_id ?? data.challengeId ?? data.id;
-
       if (challengeId === undefined || challengeId === null) {
-        throw new Error(
-          data.error || "The server did not return a challenge ID."
-        );
+        throw new Error(data.error || "The server did not return a challenge ID.");
       }
-
       showCaptchaImage(data);
       state.challengeId = challengeId;
-
       $("answer").value = "";
-
-      if (data.balance !== undefined) {
-        setBalance(data.balance);
-      }
-
+      if (data.balance !== undefined) setBalance(data.balance);
       setMessage("message", "Enter the characters shown above.");
     } catch (error) {
       state.challengeId = null;
@@ -715,26 +480,15 @@
   }
 
   async function submitAnswer() {
-    if (
-      !state.initData ||
-      !state.challengeId ||
-      state.busy ||
-      state.demoRunning
-    ) {
-      return;
-    }
-
+    if (!state.initData || !state.challengeId || state.busy || state.demoRunning) return;
     const answer = $("answer").value.trim();
-
     if (!answer) {
       setMessage("message", "Please enter the CAPTCHA characters.", true);
       return;
     }
-
     state.busy = true;
     updateControls();
     setMessage("message", "Checking your answer...");
-
     try {
       const data = await api("/api/answer", {
         method: "POST",
@@ -744,33 +498,13 @@
           answer: answer
         }
       });
-
       state.challengeId = null;
-
-      if (data.balance !== undefined) {
-        setBalance(data.balance);
-      }
-
-      setMessage(
-        "message",
-        data.message || "Answer submitted successfully."
-      );
-
-      // Refresh balance from the server instead of calculating it in the page.
-      try {
-        await loadSession();
-      } catch (refreshError) {
-        console.warn("Balance refresh failed:", refreshError);
-      }
-
-      // Fetch another challenge only after a successful answer response.
+      if (data.balance !== undefined) setBalance(data.balance);
+      setMessage("message", data.message || "Correct! 1 coin earned.");
+      try { await loadSession(); } catch (e) {}
       await loadChallenge();
     } catch (error) {
-      setMessage(
-        "message",
-        error.message || "Could not submit the answer.",
-        true
-      );
+      setMessage("message", error.message || "Could not submit the answer.", true);
     } finally {
       state.busy = false;
       updateControls();
@@ -779,102 +513,51 @@
 
   async function submitWithdrawal(event) {
     event.preventDefault();
-
     if (!state.initData || state.busy) return;
-
     const coins = Number($("withdraw-coins").value);
     const upi = $("withdraw-upi").value.trim();
-
     if (!Number.isInteger(coins) || coins <= 0 || coins % 50 !== 0) {
-      setMessage(
-        "withdraw-message",
-        "Enter a whole number of coins in multiples of 50.",
-        true
-      );
+      setMessage("withdraw-message", "Enter a whole number of coins in multiples of 50.", true);
       return;
     }
-
     if (!/^[^\s@]+@[^\s@]+$/.test(upi)) {
-      setMessage(
-        "withdraw-message",
-        "Enter a valid UPI ID, for example name@upi.",
-        true
-      );
+      setMessage("withdraw-message", "Enter a valid UPI ID, for example name@upi.", true);
       return;
     }
-
     state.busy = true;
     updateControls();
     setMessage("withdraw-message", "Submitting your request...");
-
     try {
       const data = await api("/api/withdraw", {
         method: "POST",
-        body: {
-          initData: state.initData,
-          coins: coins,
-          upi: upi
-        }
+        body: { initData: state.initData, coins: coins, upi: upi }
       });
-
-      if (data.balance !== undefined) {
-        setBalance(data.balance);
-      }
-
-      const reference = data.withdrawal_id
-        ? ` Reference: ${data.withdrawal_id}.`
-        : "";
-
-      const amount = data.amount_inr !== undefined
-        ? ` Requested amount: ₹${data.amount_inr}.`
-        : "";
-
-      setMessage(
-        "withdraw-message",
-        (data.message || "Withdrawal request submitted.") +
-          amount + reference
-      );
-
+      if (data.balance !== undefined) setBalance(data.balance);
+      const reference = data.withdrawal_id ? ` Reference: ${data.withdrawal_id}.` : "";
+      const amount = data.amount_inr !== undefined ? ` Requested amount: ₹${data.amount_inr}.` : "";
+      setMessage("withdraw-message", (data.message || "Withdrawal request submitted.") + amount + reference);
       $("withdraw-form").reset();
-
-      try {
-        await loadSession();
-      } catch (refreshError) {
-        console.warn("Balance refresh failed:", refreshError);
-      }
+      try { await loadSession(); } catch (e) {}
     } catch (error) {
-      setMessage(
-        "withdraw-message",
-        error.message || "Could not submit withdrawal request.",
-        true
-      );
+      setMessage("withdraw-message", error.message || "Could not submit withdrawal request.", true);
     } finally {
       state.busy = false;
       updateControls();
     }
   }
 
-  // This is only a visual demonstration. It never earns coins.
   function startDemo() {
     if (state.demoRunning || state.busy) return;
-
     state.demoRunning = true;
-
     let seconds = 10;
-
     $("auto-countdown").textContent = String(seconds);
     $("auto-captcha-display").textContent = "DEMO";
     setMessage("auto-bot-status", "Demo running. No coins are being earned.");
-
     updateControls();
-
     state.demoTimer = window.setInterval(() => {
       seconds -= 1;
       $("auto-countdown").textContent = String(seconds);
-
-      if (seconds <= 0) {
-        stopDemo(true);
-      }
+      if (seconds <= 0) stopDemo(true);
     }, 1000);
   }
 
@@ -883,32 +566,16 @@
       window.clearInterval(state.demoTimer);
       state.demoTimer = null;
     }
-
     state.demoRunning = false;
-
     $("auto-countdown").textContent = "10";
     $("auto-captcha-display").textContent = completed ? "DONE" : "READY";
-
-    setMessage(
-      "auto-bot-status",
-      completed
-        ? "Demo finished. No coins were earned."
-        : "Demo stopped. No coins were earned."
-    );
-
+    setMessage("auto-bot-status", completed ? "Demo finished. No coins were earned." : "Demo stopped. No coins were earned.");
     updateControls();
   }
 
   async function watchAd() {
-    // Do not show a false success or add coins in the browser.
-    // The current backend's AdsGram reward endpoint is disabled.
     $("ad-button").disabled = true;
-
-    setMessage(
-      "ad-message",
-      "Ad rewards are temporarily unavailable because reward verification is disabled on the server.",
-      true
-    );
+    setMessage("ad-message", "Ad rewards are temporarily unavailable.", true);
   }
 
   async function initialize() {
@@ -916,86 +583,42 @@
       tg.ready();
       tg.expand();
     }
-
     if (!tg || !tg.initData) {
-      $("welcome").textContent =
-        "Please open this Mini App from the Telegram bot.";
-      setMessage(
-        "message",
-        "Telegram account information is missing. Open the app through @CaptchaEarnIndiaBot.",
-        true
-      );
-      setMessage(
-        "ad-message",
-        "Open the Mini App through Telegram to use your account."
-      );
+      $("welcome").textContent = "Please open this Mini App from the Telegram bot.";
+      setMessage("message", "Open the app through @CaptchaEarnIndiaBot.", true);
       updateControls();
       return;
     }
-
     state.initData = tg.initData;
-
     $("welcome").textContent = "Connecting to your account...";
-
     try {
       await loadSession();
       await loadChallenge();
-
       $("auto-start-button").disabled = false;
-
-      // Ads remain unavailable until the backend verifies rewarded ads.
       $("ad-button").disabled = true;
-      setMessage(
-        "ad-message",
-        "Ad rewards are temporarily unavailable."
-      );
+      setMessage("ad-message", "Ad rewards are temporarily unavailable.");
     } catch (error) {
       $("welcome").textContent = "Could not connect to your account.";
-      setMessage(
-        "message",
-        error.message || "Account connection failed. Please try again later.",
-        true
-      );
+      setMessage("message", error.message || "Account connection failed.", true);
     }
-
     updateControls();
   }
 
   $("submit-button").addEventListener("click", submitAnswer);
   $("new-button").addEventListener("click", loadChallenge);
-
-  $("new-button").addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      loadChallenge();
-    }
+  $("new-button").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); loadChallenge(); }
   });
-
-  $("answer").addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      submitAnswer();
-    }
+  $("answer").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); submitAnswer(); }
   });
-
   $("auto-start-button").addEventListener("click", startDemo);
   $("auto-stop-button").addEventListener("click", () => stopDemo(false));
   $("ad-button").addEventListener("click", watchAd);
   $("withdraw-form").addEventListener("submit", submitWithdrawal);
 
-  window.addEventListener("beforeunload", () => {
-    if (state.demoTimer !== null) {
-      window.clearInterval(state.demoTimer);
-    }
-
-    if (state.captchaObjectUrl) {
-      URL.revokeObjectURL(state.captchaObjectUrl);
-    }
-  });
-
   initialize();
 })();
 </script>
-
 </body>
 </html>
