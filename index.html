@@ -484,9 +484,23 @@ async function watchAd() {
       adController = window.Adsgram.init({ blockId: "53035" });
     }
 
-    await adController.show();
+    const adResult = await adController.show();
 
-    adMessage.textContent = "The ad finished. Reward confirmation depends on the configured provider callback.";
+    // Adsgram resolves show() with {done: true} only when the
+    // rewarded ad was watched to completion. It rejects on
+    // skip, no-fill, rendering errors and anti-fraud rejection,
+    // so a coin is credited only for a genuinely finished ad.
+    if (adResult && adResult.done === true) {
+      try {
+        const reward = await apiRequest("/api/ad-reward", {});
+        setBalance(reward.balance);
+        adMessage.textContent = "🎬 Ad completed! 1 bonus coin added to your balance.";
+      } catch (rewardError) {
+        adMessage.textContent = "Ad completed, but the reward could not be saved: " + rewardError.message;
+      }
+    } else {
+      adMessage.textContent = "The ad was not completed, so no bonus coin was added. Your CAPTCHA coin is safe.";
+    }
   } catch (error) {
     adMessage.textContent = "No ad could be shown or the ad was not completed. Your CAPTCHA coin is safe.";
   } finally {
