@@ -43,7 +43,7 @@ ADSGRAM_CALLBACK_SECRET = os.environ.get(
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-MINI_APP_URL = "https://himanshu02000.github.io/captcha-earn/"
+MINI_APP_URL = "https://captcha-earning-bot.onrender.com/"
 CHANNEL_URL = "https://t.me/CaptchaEarnIndiaOfficial"
 
 print("Starting Captcha Earn Bot...", flush=True)
@@ -686,6 +686,60 @@ def mini_app_answer():
         "ok": True,
         "correct": True,
         "message": "✅ Correct! 1 coin earned.",
+        "balance": balance
+    })
+
+
+# =========================================================
+# AD REWARD (1 coin per fully watched rewarded ad)
+# =========================================================
+
+ad_reward_lock = threading.Lock()
+last_ad_reward_at = {}
+
+
+@app.route("/api/ad-reward", methods=["POST"])
+def mini_app_ad_reward():
+
+    user_data, telegram_id = authenticated_user()
+
+    if not user_data:
+        return jsonify({
+            "ok": False,
+            "error": "Telegram authentication failed."
+        }), 401
+
+    # One rewarded ad per user per 60 seconds, to slow down
+    # anyone calling this endpoint without watching an ad.
+    now = time.time()
+
+    with ad_reward_lock:
+
+        last = last_ad_reward_at.get(telegram_id, 0)
+
+        if now - last < 60:
+            return jsonify({
+                "ok": False,
+                "error":
+                    "You just claimed an ad reward. "
+                    "Please wait a little before the next one."
+            }), 429
+
+        last_ad_reward_at[telegram_id] = now
+
+    balance = add_one_coin(telegram_id)
+
+    if balance is None:
+        return jsonify({
+            "ok": False,
+            "error":
+                "Could not save your reward. "
+                "Please check your balance."
+        }), 500
+
+    return jsonify({
+        "ok": True,
+        "message": "🎬 Ad reward: 1 coin earned.",
         "balance": balance
     })
 
