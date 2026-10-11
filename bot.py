@@ -13,7 +13,7 @@ from urllib.parse import parse_qsl
 from flask import Flask, request, jsonify, send_from_directory
 from supabase import create_client
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -60,7 +60,6 @@ app = Flask(__name__)
 def verify_telegram_init_data(init_data):
 
     if not init_data or not isinstance(init_data, str):
-        print("[AUTH] Init data empty or not a string")
         return None
 
     try:
@@ -74,15 +73,12 @@ def verify_telegram_init_data(init_data):
         received_hash = parsed.pop("hash", None)
 
         if not received_hash:
-            print("[AUTH] No hash in init data")
             return None
 
         data_check_string = "\n".join(
             f"{key}={value}"
             for key, value in sorted(parsed.items())
         )
-
-        print(f"[AUTH] Data check string: {data_check_string[:100]}...")
 
         secret_key = hmac.new(
             b"WebAppData",
@@ -96,14 +92,10 @@ def verify_telegram_init_data(init_data):
             hashlib.sha256
         ).hexdigest()
 
-        print(f"[AUTH] Received hash:   {received_hash}")
-        print(f"[AUTH] Calculated hash: {calculated_hash}")
-
         if not hmac.compare_digest(
             calculated_hash,
             received_hash
         ):
-            print("[AUTH] Hash mismatch!")
             return None
 
         auth_date = int(
@@ -117,7 +109,6 @@ def verify_telegram_init_data(init_data):
             or now - auth_date > 86400
             or auth_date > now + 60
         ):
-            print(f"[AUTH] Date validation failed: auth_date={auth_date}, now={now}")
             return None
 
         user_data = json.loads(
@@ -128,18 +119,15 @@ def verify_telegram_init_data(init_data):
             not isinstance(user_data, dict)
             or not user_data.get("id")
         ):
-            print("[AUTH] User data missing or invalid")
             return None
 
-        print(f"[AUTH] Authentication successful for user {user_data.get('id')}")
         return user_data
 
     except (
         ValueError,
         TypeError,
         json.JSONDecodeError
-    ) as exc:
-        print(f"[AUTH] Exception during verification: {repr(exc)}")
+    ):
         return None
 
 
@@ -154,14 +142,11 @@ def authenticated_user():
         ""
     )
 
-    print(f"[AUTH] Received request with initData length: {len(init_data)}")
-
     user_data = verify_telegram_init_data(
         init_data
     )
 
     if not user_data:
-        print("[AUTH] Authentication failed")
         return None, None
 
     return (
@@ -470,6 +455,113 @@ def make_captcha_svg(text):
     parts.append("</svg>")
 
     return "".join(parts)
+
+
+# =========================================================
+# TELEGRAM BOT HANDLERS
+# =========================================================
+
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /start command"""
+    
+    telegram_user = update.effective_user
+    
+    if telegram_user is None:
+        return
+    
+    # Create or ensure user exists
+    user = ensure_user(
+        telegram_user.id,
+        telegram_user.username
+    )
+    
+    if user is None:
+        await update.message.reply_text(
+            "❌ Could not create your account. Please try again later."
+        )
+        return
+    
+    balance = user.get("balance", 0) or 0
+    
+    # Create inline keyboard with Mini App button
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "🎮 Open App",
+                web_app=WebAppInfo(url=MINI_APP_URL)
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📢 Updates",
+                url=CHANNEL_URL
+            )
+        ]
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    welcome_text = (
+        "💰 Welcome to Captcha Earn India!\n\n"
+        "Earn coins in your free time by solving CAPTCHAs and watching available ads.\n\n"
+        "✅ Complete tasks and earn coins\n"
+        "⏰ Work at your own pace\n"
+        "💸 Submit withdrawal requests through UPI when eligible\n\n"
+        "📢 Payment updates and verified withdrawal proofs:\n"
+        f"{CHANNEL_URL}\n\n"
+        "⏳ The app may take 30–60 seconds to load after inactivity. Please wait patiently.\n\n"
+        "🚀 Tap below to get started!\n\n"
+        f"💰 Your balance: {balance} coins\n\n"
+        "⚠️ Withdrawals are subject to eligibility and approval."
+    )
+    
+    await update.message.reply_text(
+        welcome_text,
+        reply_markup=reply_markup
+    )
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /help command"""
+    
+    help_text = (
+        "🎯 *Captcha Earn India - Help*\n\n"
+        "/start - Open the main menu\n"
+        "/balance - Check your balance\n"
+        "/help - Show this help message\n\n"
+        "**How it works:**\n"
+        "1. Tap 🎮 Open App\n"
+        "2. Solve CAPTCHAs to earn coins\n"
+        "3. Watch ads for extra rewards\n"
+        "4. Request withdrawal when eligible\n\n"
+        "Minimum withdrawal: 1,000 coins (first 5 requests), then 2,500 coins"
+    )
+    
+    await update.message.reply_text(help_text)
+
+
+async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /balance command"""
+    
+    telegram_user = update.effective_user
+    
+    if telegram_user is None:
+        return
+    
+    user = get_user(telegram_user.id)
+    
+    if user is None:
+        await update.message.reply_text(
+            "❌ User not found. Use /start first."
+        )
+        return
+    
+    balance = user.get("balance", 0) or 0
+    
+    await update.message.reply_text(
+        f"💰 Your balance: *{balance} coins*",
+        parse_mode="Markdown"
+    )
 
 
 # =========================================================
@@ -1053,17 +1145,64 @@ def request_withdrawal():
                 "ok": False,
                 "error":
                     "User account not found."
-            }), 400
+            }), 500
 
         return jsonify({
             "ok": False,
-            "error":
-                "Withdrawal request failed. "
-                "Please check your details and try again."
+            "error": "Withdrawal failed. Please try again."
         }), 500
 
 
+# =========================================================
+# BOT SETUP & MAIN
+# =========================================================
+
+async def setup_telegram_bot():
+    """Setup and start the Telegram bot"""
+    
+    bot_app = Application.builder().token(BOT_TOKEN).build()
+    
+    # Add command handlers
+    bot_app.add_handler(CommandHandler("start", start_command))
+    bot_app.add_handler(CommandHandler("help", help_command))
+    bot_app.add_handler(CommandHandler("balance", balance_command))
+    
+    return bot_app
+
+
+async def main():
+    """Main entry point"""
+    
+    # Setup Telegram bot
+    bot_app = await setup_telegram_bot()
+    
+    # Start bot polling
+    async with bot_app:
+        await bot_app.start()
+        print("✅ Telegram bot started (polling mode)")
+        
+        # Keep bot running
+        await asyncio.Event().wait()
+
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    print(f"Starting server on 0.0.0.0:{port}")
-    app.run(host="0.0.0.0", port=port, debug=False)
+    
+    # Try to run both Flask and Telegram bot
+    import threading
+    
+    def run_flask():
+        port = int(os.environ.get("PORT", 5000))
+        app.run(host="0.0.0.0", port=port, debug=False)
+    
+    def run_telegram_bot():
+        asyncio.run(main())
+    
+    # Run Flask in a thread
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    
+    # Run Telegram bot in main thread
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n⚠️ Bot stopped")
