@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#1769d3">
   <title>Captcha Earn India</title>
-  <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js?64"></script>
   <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
   <style>
     * { box-sizing: border-box; }
@@ -254,6 +254,33 @@ function refreshTelegramContext() {
   return { telegramApp, initData };
 }
 
+/* Retry the official Telegram SDK if the first script load did not expose WebApp. */
+async function ensureTelegramSDK() {
+  if (window.Telegram && window.Telegram.WebApp) return true;
+
+  return await new Promise(resolve => {
+    let finished = false;
+    const finish = value => {
+      if (finished) return;
+      finished = true;
+      resolve(Boolean(value));
+    };
+
+    const script = document.createElement("script");
+    script.src = "https://telegram.org/js/telegram-web-app.js?64";
+    script.async = true;
+    script.onload = () => finish(
+      Boolean(window.Telegram && window.Telegram.WebApp)
+    );
+    script.onerror = () => finish(false);
+    document.head.appendChild(script);
+
+    window.setTimeout(() => finish(
+      Boolean(window.Telegram && window.Telegram.WebApp)
+    ), 7000);
+  });
+}
+
 function disableAccountActions() {
   submitButton.disabled = true;
   newButton.style.pointerEvents = "none";
@@ -426,7 +453,7 @@ async function watchAd() {
   refreshTelegramContext();
   if (adBusy) return;
 
-  if (!telegramApp || !initData) {
+  if (!initData) {
     adMessage.textContent = "Open this Mini App through your Telegram bot first.";
     return;
   }
@@ -469,7 +496,7 @@ async function submitWithdrawal(event) {
   refreshTelegramContext();
 
   if (withdrawBusy) return;
-  if (!telegramApp || !initData) {
+  if (!initData) {
     withdrawMessage.textContent = "Open this Mini App through your Telegram bot first.";
     return;
   }
@@ -580,7 +607,7 @@ function runDemoCycle() {
 autoStartButton.addEventListener("click", () => {
   refreshTelegramContext();
   if (autoBotRunning) return;
-  if (!telegramApp || !initData) {
+  if (!initData) {
     autoStatus.textContent = "Please open this Mini App through your Telegram bot.";
     return;
   }
@@ -607,19 +634,25 @@ answerInput.addEventListener("keydown", event => {
 });
 
 async function startApp() {
+  welcome.textContent = "Checking Telegram connection...";
+
+  // First retry the official SDK if it was unavailable during initial page load.
+  await ensureTelegramSDK();
   const context = refreshTelegramContext();
 
-  if (!context.telegramApp) {
-    welcome.textContent = "CHECK 1: Telegram was not detected.";
-    messageElement.textContent = "Close this page and reopen it using the Open Captcha Earn button in the private chat with @CaptchaEarnIndiaBot. Do not open the GitHub Pages URL directly in your browser.";
-    disableAccountActions();
-    return;
-  }
-
+  // Prefer signed launch data. The backend validates it before allowing account access.
   if (!context.initData) {
-    welcome.textContent = "CHECK 2: Telegram launch data is missing.";
-    messageElement.textContent = "The Telegram window opened, but no signed launch data was provided. Close the Mini App, send /start to @CaptchaEarnIndiaBot, and tap the newest Open Captcha Earn button. If this continues, we must check the Telegram Mini App URL settings; do not change your database.";
     disableAccountActions();
+
+    if (!context.telegramApp) {
+      welcome.textContent = "CHECK 1: Telegram's connection script is unavailable.";
+      messageElement.textContent =
+        "The app opened inside Telegram, but its official JavaScript SDK could not be detected and no launch data was found. This is a Telegram script-loading issue, not a Supabase SQL issue. Close the Mini App and open it again from the newest /start message. If this repeats, tell me and we will check the published page and SDK loading next.";
+    } else {
+      welcome.textContent = "CHECK 2: Telegram launch data is missing.";
+      messageElement.textContent =
+        "Telegram was detected, but it did not provide signed launch data. Close the Mini App, send /start to @CaptchaEarnIndiaBot, and tap the newest Open Captcha Earn button.";
+    }
     return;
   }
 
