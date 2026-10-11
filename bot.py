@@ -1,3 +1,4 @@
+
 import os
 import asyncio
 import hmac
@@ -13,7 +14,12 @@ from urllib.parse import parse_qsl
 from flask import Flask, request, jsonify, send_from_directory
 from supabase import create_client
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    WebAppInfo,
+)
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -39,7 +45,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MINI_APP_URL = "https://t.me/CaptchaEarnIndiaBot/earncoins"
 CHANNEL_URL = "https://t.me/CaptchaEarnIndiaOfficial"
 
-print("Starting Captcha Earn Bot...")
+print("Starting Captcha Earn Bot...", flush=True)
 
 supabase = create_client(
     SUPABASE_URL,
@@ -133,26 +139,16 @@ def verify_telegram_init_data(init_data):
 
 def authenticated_user():
 
-    body = request.get_json(
-        silent=True
-    ) or {}
+    body = request.get_json(silent=True) or {}
 
-    init_data = body.get(
-        "initData",
-        ""
-    )
+    init_data = body.get("initData", "")
 
-    user_data = verify_telegram_init_data(
-        init_data
-    )
+    user_data = verify_telegram_init_data(init_data)
 
     if not user_data:
         return None, None
 
-    return (
-        user_data,
-        int(user_data["id"])
-    )
+    return user_data, int(user_data["id"])
 
 
 # =========================================================
@@ -162,7 +158,6 @@ def authenticated_user():
 def get_user(telegram_id):
 
     try:
-
         result = (
             supabase
             .table("users")
@@ -172,66 +167,42 @@ def get_user(telegram_id):
             .execute()
         )
 
-        return (
-            result.data[0]
-            if result.data
-            else None
-        )
+        return result.data[0] if result.data else None
 
     except Exception as exc:
-
-        print(
-            "GET USER ERROR:",
-            repr(exc)
-        )
-
+        print("GET USER ERROR:", repr(exc), flush=True)
         return None
 
 
-def ensure_user(
-    telegram_id,
-    username=None
-):
+def ensure_user(telegram_id, username=None):
 
-    user = get_user(
-        telegram_id
-    )
+    user = get_user(telegram_id)
 
     if user:
 
-        if (
-            username
-            and user.get("username") != username
-        ):
+        if username and user.get("username") != username:
 
             try:
-
                 (
                     supabase
                     .table("users")
-                    .update({
-                        "username": username
-                    })
-                    .eq(
-                        "telegram_id",
-                        telegram_id
-                    )
+                    .update({"username": username})
+                    .eq("telegram_id", telegram_id)
                     .execute()
                 )
 
                 user["username"] = username
 
             except Exception as exc:
-
                 print(
                     "USERNAME UPDATE ERROR:",
-                    repr(exc)
+                    repr(exc),
+                    flush=True
                 )
 
         return user
 
     try:
-
         result = (
             supabase
             .table("users")
@@ -247,22 +218,14 @@ def ensure_user(
             return result.data[0]
 
     except Exception as exc:
+        print("CREATE USER ERROR:", repr(exc), flush=True)
 
-        print(
-            "CREATE USER ERROR:",
-            repr(exc)
-        )
-
-    return get_user(
-        telegram_id
-    )
+    return get_user(telegram_id)
 
 
 def create_user(update):
 
-    telegram_user = (
-        update.effective_user
-    )
+    telegram_user = update.effective_user
 
     if telegram_user is None:
         return None
@@ -275,55 +238,31 @@ def create_user(update):
 
 def add_one_coin(telegram_id):
 
-    user = get_user(
-        telegram_id
-    )
+    user = get_user(telegram_id)
 
     if user is None:
         return None
 
     try:
-
-        old_balance = float(
-            user.get("balance", 0)
-            or 0
-        )
-
-        new_balance = (
-            old_balance + 1
-        )
+        old_balance = float(user.get("balance", 0) or 0)
+        new_balance = old_balance + 1
 
         result = (
             supabase
             .table("users")
-            .update({
-                "balance": new_balance
-            })
-            .eq(
-                "telegram_id",
-                telegram_id
-            )
-            .select(
-                "telegram_id, balance"
-            )
+            .update({"balance": new_balance})
+            .eq("telegram_id", telegram_id)
+            .select("telegram_id, balance")
             .execute()
         )
 
         if not result.data:
             return None
 
-        return result.data[0].get(
-            "balance",
-            new_balance
-        )
+        return result.data[0].get("balance", new_balance)
 
     except Exception as exc:
-
-        print(
-            "BALANCE UPDATE ERROR:",
-            repr(exc)
-        )
-
+        print("BALANCE UPDATE ERROR:", repr(exc), flush=True)
         return None
 
 
@@ -331,17 +270,13 @@ def add_one_coin(telegram_id):
 # VISUAL CAPTCHA
 # =========================================================
 
-CAPTCHA_CHARS = (
-    "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-)
+CAPTCHA_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 
 def make_captcha_text(length=5):
 
     return "".join(
-        secrets.choice(
-            CAPTCHA_CHARS
-        )
+        secrets.choice(CAPTCHA_CHARS)
         for _ in range(length)
     )
 
@@ -355,7 +290,6 @@ def make_captcha_svg(text):
         f'<svg xmlns="http://www.w3.org/2000/svg" '
         f'viewBox="0 0 {width} {height}" '
         f'width="{width}" height="{height}">',
-
         '<rect width="100%" height="100%" '
         'rx="18" fill="#f7fafc"/>'
     ]
@@ -366,11 +300,7 @@ def make_captcha_svg(text):
         x = secrets.randbelow(width)
         y = secrets.randbelow(height)
         r = 1 + secrets.randbelow(3)
-
-        opacity = (
-            0.15
-            + secrets.randbelow(45) / 100
-        )
+        opacity = 0.15 + secrets.randbelow(45) / 100
 
         parts.append(
             f'<circle cx="{x}" cy="{y}" '
@@ -383,13 +313,9 @@ def make_captcha_svg(text):
 
         x1 = secrets.randbelow(width)
         y1 = secrets.randbelow(height)
-
         x2 = secrets.randbelow(width)
         y2 = secrets.randbelow(height)
-
-        stroke_width = (
-            1 + secrets.randbelow(3)
-        )
+        stroke_width = 1 + secrets.randbelow(3)
 
         parts.append(
             f'<line x1="{x1}" y1="{y1}" '
@@ -406,24 +332,10 @@ def make_captcha_svg(text):
     for index, char in enumerate(text):
 
         x = start_x + index * spacing
-
-        y = (
-            118
-            + secrets.randbelow(20)
-            - 10
-        )
-
-        rotation = (
-            secrets.randbelow(31) - 15
-        )
-
-        skew = (
-            secrets.randbelow(15) - 7
-        )
-
-        font_size = (
-            74 + secrets.randbelow(13)
-        )
+        y = 118 + secrets.randbelow(20) - 10
+        rotation = secrets.randbelow(31) - 15
+        skew = secrets.randbelow(15) - 7
+        font_size = 74 + secrets.randbelow(13)
 
         parts.append(
             f'<text x="{x}" y="{y}" '
@@ -461,29 +373,31 @@ def make_captcha_svg(text):
 # TELEGRAM BOT HANDLERS
 # =========================================================
 
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command"""
-    
+async def start_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    """Handle /start command."""
+
     telegram_user = update.effective_user
-    
-    if telegram_user is None:
+
+    if telegram_user is None or update.message is None:
         return
-    
-    # Create or ensure user exists
+
     user = ensure_user(
         telegram_user.id,
         telegram_user.username
     )
-    
+
     if user is None:
         await update.message.reply_text(
-            "❌ Could not create your account. Please try again later."
+            "❌ Could not create your account. "
+            "Please try again later."
         )
         return
-    
+
     balance = user.get("balance", 0) or 0
-    
-    # Create inline keyboard with Mini App button
+
     keyboard = [
         [
             InlineKeyboardButton(
@@ -498,66 +412,79 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         ]
     ]
-    
+
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     welcome_text = (
         "💰 Welcome to Captcha Earn India!\n\n"
-        "Earn coins in your free time by solving CAPTCHAs and watching available ads.\n\n"
+        "Earn coins in your free time by solving CAPTCHAs "
+        "and watching available ads.\n\n"
         "✅ Complete tasks and earn coins\n"
         "⏰ Work at your own pace\n"
         "💸 Submit withdrawal requests through UPI when eligible\n\n"
         "📢 Payment updates and verified withdrawal proofs:\n"
         f"{CHANNEL_URL}\n\n"
-        "⏳ The app may take 30–60 seconds to load after inactivity. Please wait patiently.\n\n"
+        "⏳ The app may take 30–60 seconds to load after inactivity. "
+        "Please wait patiently.\n\n"
         "🚀 Tap below to get started!\n\n"
         f"💰 Your balance: {balance} coins\n\n"
         "⚠️ Withdrawals are subject to eligibility and approval."
     )
-    
+
     await update.message.reply_text(
         welcome_text,
         reply_markup=reply_markup
     )
 
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /help command"""
-    
+async def help_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    """Handle /help command."""
+
     help_text = (
         "🎯 *Captcha Earn India - Help*\n\n"
         "/start - Open the main menu\n"
         "/balance - Check your balance\n"
         "/help - Show this help message\n\n"
-        "**How it works:**\n"
+        "*How it works:*\n"
         "1. Tap 🎮 Open App\n"
         "2. Solve CAPTCHAs to earn coins\n"
         "3. Watch ads for extra rewards\n"
         "4. Request withdrawal when eligible\n\n"
-        "Minimum withdrawal: 1,000 coins (first 5 requests), then 2,500 coins"
+        "Minimum withdrawal: 1,000 coins (first 5 requests), "
+        "then 2,500 coins"
     )
-    
-    await update.message.reply_text(help_text)
+
+    if update.message:
+        await update.message.reply_text(
+            help_text,
+            parse_mode="Markdown"
+        )
 
 
-async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /balance command"""
-    
+async def balance_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    """Handle /balance command."""
+
     telegram_user = update.effective_user
-    
-    if telegram_user is None:
+
+    if telegram_user is None or update.message is None:
         return
-    
+
     user = get_user(telegram_user.id)
-    
+
     if user is None:
         await update.message.reply_text(
             "❌ User not found. Use /start first."
         )
         return
-    
+
     balance = user.get("balance", 0) or 0
-    
+
     await update.message.reply_text(
         f"💰 Your balance: *{balance} coins*",
         parse_mode="Markdown"
@@ -580,27 +507,19 @@ def home():
 @app.route("/health")
 def health():
 
-    return jsonify({
-        "status": "ok"
-    }), 200
+    return jsonify({"status": "ok"}), 200
 
 
 # =========================================================
 # SESSION
 # =========================================================
 
-@app.route(
-    "/api/session",
-    methods=["POST"]
-)
+@app.route("/api/session", methods=["POST"])
 def mini_app_session():
 
-    user_data, telegram_id = (
-        authenticated_user()
-    )
+    user_data, telegram_id = authenticated_user()
 
     if not user_data:
-
         return jsonify({
             "ok": False,
             "error":
@@ -614,25 +533,15 @@ def mini_app_session():
     )
 
     if user is None:
-
         return jsonify({
             "ok": False,
-            "error":
-                "Could not load your account."
+            "error": "Could not load your account."
         }), 500
 
     return jsonify({
         "ok": True,
-        "name":
-            user_data.get(
-                "first_name",
-                "User"
-            ),
-        "balance":
-            user.get(
-                "balance",
-                0
-            ) or 0
+        "name": user_data.get("first_name", "User"),
+        "balance": user.get("balance", 0) or 0
     })
 
 
@@ -640,22 +549,15 @@ def mini_app_session():
 # VISUAL CAPTCHA CHALLENGE
 # =========================================================
 
-@app.route(
-    "/api/challenge",
-    methods=["POST"]
-)
+@app.route("/api/challenge", methods=["POST"])
 def mini_app_challenge():
 
-    user_data, telegram_id = (
-        authenticated_user()
-    )
+    user_data, telegram_id = authenticated_user()
 
     if not user_data:
-
         return jsonify({
             "ok": False,
-            "error":
-                "Telegram authentication failed."
+            "error": "Telegram authentication failed."
         }), 401
 
     user = ensure_user(
@@ -664,57 +566,29 @@ def mini_app_challenge():
     )
 
     if user is None:
-
         return jsonify({
             "ok": False,
-            "error":
-                "Could not load your account."
+            "error": "Could not load your account."
         }), 500
 
-    captcha_text = make_captcha_text(
-        5
-    )
-
-    challenge_id = (
-        secrets.token_urlsafe(24)
-    )
+    captcha_text = make_captcha_text(5)
+    challenge_id = secrets.token_urlsafe(24)
 
     with challenge_lock:
-
         challenges[challenge_id] = {
-            "telegram_id":
-                telegram_id,
-
-            "answer":
-                captcha_text,
-
-            "expires":
-                time.time() + 180,
-
-            "attempts":
-                0
+            "telegram_id": telegram_id,
+            "answer": captcha_text,
+            "expires": time.time() + 180,
+            "attempts": 0
         }
 
     return jsonify({
-
         "ok": True,
-
-        "challenge_id":
-            challenge_id,
-
-        "captcha_svg":
-            make_captcha_svg(
-                captcha_text
-            ),
-
+        "challenge_id": challenge_id,
+        "captcha_svg": make_captcha_svg(captcha_text),
         "instruction":
             "Enter the 5 characters shown in the CAPTCHA.",
-
-        "balance":
-            user.get(
-                "balance",
-                0
-            ) or 0
+        "balance": user.get("balance", 0) or 0
     })
 
 
@@ -722,145 +596,83 @@ def mini_app_challenge():
 # CAPTCHA ANSWER
 # =========================================================
 
-@app.route(
-    "/api/answer",
-    methods=["POST"]
-)
+@app.route("/api/answer", methods=["POST"])
 def mini_app_answer():
 
-    user_data, telegram_id = (
-        authenticated_user()
-    )
+    user_data, telegram_id = authenticated_user()
 
     if not user_data:
-
         return jsonify({
             "ok": False,
-            "error":
-                "Telegram authentication failed."
+            "error": "Telegram authentication failed."
         }), 401
 
-    body = (
-        request.get_json(
-            silent=True
-        ) or {}
-    )
+    body = request.get_json(silent=True) or {}
 
-    challenge_id = body.get(
-        "challenge_id"
-    )
+    challenge_id = body.get("challenge_id")
+    submitted_answer = body.get("answer", "")
 
-    submitted_answer = body.get(
-        "answer",
-        ""
-    )
-
-    if not isinstance(
-        challenge_id,
-        str
-    ):
-
+    if not isinstance(challenge_id, str):
         return jsonify({
             "ok": False,
-            "error":
-                "Invalid challenge."
+            "error": "Invalid challenge."
         }), 400
 
-    if not isinstance(
-        submitted_answer,
-        str
-    ):
+    if not isinstance(submitted_answer, str):
+        submitted_answer = str(submitted_answer)
 
-        submitted_answer = str(
-            submitted_answer
-        )
-
-    submitted_answer = (
-        submitted_answer
-        .strip()
-        .upper()
-    )
+    submitted_answer = submitted_answer.strip().upper()
 
     with challenge_lock:
 
-        challenge = challenges.get(
-            challenge_id
-        )
+        challenge = challenges.get(challenge_id)
 
         if (
             not challenge
-            or challenge["telegram_id"]
-            != telegram_id
+            or challenge["telegram_id"] != telegram_id
         ):
-
             return jsonify({
                 "ok": False,
                 "error":
-                    "Challenge not found. "
-                    "Start a new CAPTCHA."
+                    "Challenge not found. Start a new CAPTCHA."
             }), 400
 
         if time.time() > challenge["expires"]:
 
-            challenges.pop(
-                challenge_id,
-                None
-            )
+            challenges.pop(challenge_id, None)
 
             return jsonify({
                 "ok": False,
-                "error":
-                    "CAPTCHA expired. "
-                    "Get a new CAPTCHA."
+                "error": "CAPTCHA expired. Get a new CAPTCHA."
             }), 400
 
         challenge["attempts"] += 1
 
         if challenge["attempts"] > 3:
 
-            challenges.pop(
-                challenge_id,
-                None
-            )
+            challenges.pop(challenge_id, None)
 
             return jsonify({
                 "ok": False,
-                "error":
-                    "Too many attempts. "
-                    "Get a new CAPTCHA."
+                "error": "Too many attempts. Get a new CAPTCHA."
             }), 429
 
-        if (
-            submitted_answer
-            != challenge["answer"]
-        ):
+        if submitted_answer != challenge["answer"]:
 
             if challenge["attempts"] >= 3:
-
-                challenges.pop(
-                    challenge_id,
-                    None
-                )
+                challenges.pop(challenge_id, None)
 
             return jsonify({
                 "ok": False,
-                "error":
-                    "❌ Incorrect CAPTCHA. "
-                    "Try again."
+                "error": "❌ Incorrect CAPTCHA. Try again."
             }), 400
 
-        # Consume CAPTCHA before reward
-        challenges.pop(
-            challenge_id,
-            None
-        )
+        # Consume CAPTCHA before awarding the reward.
+        challenges.pop(challenge_id, None)
 
-    balance = add_one_coin(
-        telegram_id
-    )
+    balance = add_one_coin(telegram_id)
 
     if balance is None:
-
         return jsonify({
             "ok": False,
             "error":
@@ -869,16 +681,10 @@ def mini_app_answer():
         }), 500
 
     return jsonify({
-
         "ok": True,
-
         "correct": True,
-
-        "message":
-            "✅ Correct! 1 coin earned.",
-
-        "balance":
-            balance
+        "message": "✅ Correct! 1 coin earned.",
+        "balance": balance
     })
 
 
@@ -886,18 +692,12 @@ def mini_app_answer():
 # WITHDRAWAL API
 # =========================================================
 
-@app.route(
-    "/api/withdraw",
-    methods=["POST"]
-)
+@app.route("/api/withdraw", methods=["POST"])
 def request_withdrawal():
 
-    user_data, telegram_id = (
-        authenticated_user()
-    )
+    user_data, telegram_id = authenticated_user()
 
     if not user_data:
-
         return jsonify({
             "ok": False,
             "error":
@@ -905,107 +705,61 @@ def request_withdrawal():
                 "Reopen the app from Telegram."
         }), 401
 
-    body = (
-        request.get_json(
-            silent=True
-        ) or {}
-    )
+    body = request.get_json(silent=True) or {}
 
-    raw_coins = body.get(
-        "coins"
-    )
+    raw_coins = body.get("coins")
+    upi = body.get("upi")
 
-    upi = body.get(
-        "upi"
-    )
-
-    if isinstance(
-        raw_coins,
-        bool
-    ):
-
+    if isinstance(raw_coins, bool):
         return jsonify({
             "ok": False,
-            "error":
-                "Enter a valid coin amount."
+            "error": "Enter a valid coin amount."
         }), 400
 
     try:
+        coins = int(raw_coins)
 
-        coins = int(
-            raw_coins
-        )
-
-    except (
-        TypeError,
-        ValueError,
-        OverflowError
-    ):
-
+    except (TypeError, ValueError, OverflowError):
         return jsonify({
             "ok": False,
-            "error":
-                "Enter a valid whole number of coins."
+            "error": "Enter a valid whole number of coins."
         }), 400
 
     if (
-        isinstance(
-            raw_coins,
-            float
-        )
+        isinstance(raw_coins, float)
         and not raw_coins.is_integer()
     ):
-
         return jsonify({
             "ok": False,
-            "error":
-                "Enter a whole number of coins."
+            "error": "Enter a whole number of coins."
         }), 400
 
     if (
-        isinstance(
-            raw_coins,
-            str
-        )
-        and str(coins)
-        != raw_coins.strip()
+        isinstance(raw_coins, str)
+        and str(coins) != raw_coins.strip()
     ):
-
         return jsonify({
             "ok": False,
-            "error":
-                "Enter a valid whole number of coins."
+            "error": "Enter a valid whole number of coins."
         }), 400
 
-    if (
-        coins <= 0
-        or coins > 1000000000
-    ):
-
+    if coins <= 0 or coins > 1000000000:
         return jsonify({
             "ok": False,
-            "error":
-                "Invalid withdrawal amount."
+            "error": "Invalid withdrawal amount."
         }), 400
 
     if coins % 50 != 0:
-
         return jsonify({
             "ok": False,
             "error":
-                "The amount must be a multiple "
-                "of 50 coins."
+                "The amount must be a multiple of 50 coins."
         }), 400
 
-    if not isinstance(
-        upi,
-        str
-    ):
-
+    if not isinstance(upi, str):
         return jsonify({
             "ok": False,
-            "error":
-                "Enter your UPI ID."
+            "error": "Enter your UPI ID."
         }), 400
 
     upi = upi.strip()
@@ -1013,85 +767,44 @@ def request_withdrawal():
     if (
         len(upi) < 3
         or len(upi) > 200
-        or any(
-            character.isspace()
-            for character in upi
-        )
+        or any(character.isspace() for character in upi)
     ):
-
         return jsonify({
             "ok": False,
-            "error":
-                "Enter a valid UPI ID without spaces."
+            "error": "Enter a valid UPI ID without spaces."
         }), 400
 
     try:
-
         result = supabase.rpc(
             "create_withdrawal",
             {
-                "p_telegram_id":
-                    telegram_id,
-
-                "p_coins":
-                    coins,
-
-                "p_upi":
-                    upi
+                "p_telegram_id": telegram_id,
+                "p_coins": coins,
+                "p_upi": upi
             }
         ).execute()
 
-        withdrawal_id = (
-            result.data
-        )
+        withdrawal_id = result.data
 
-        if (
-            isinstance(
-                withdrawal_id,
-                list
-            )
-            and withdrawal_id
-        ):
-
-            withdrawal_id = (
-                withdrawal_id[0]
-            )
+        if isinstance(withdrawal_id, list) and withdrawal_id:
+            withdrawal_id = withdrawal_id[0]
 
         return jsonify({
-
             "ok": True,
-
-            "message":
-                "Withdrawal request submitted successfully!",
-
-            "withdrawal_id":
-                withdrawal_id,
-
-            "coins":
-                coins,
-
-            "amount_inr":
-                coins / 50,
-
-            "status":
-                "pending"
-
+            "message": "Withdrawal request submitted successfully!",
+            "withdrawal_id": withdrawal_id,
+            "coins": coins,
+            "amount_inr": coins / 50,
+            "status": "pending"
         }), 200
 
     except Exception as exc:
 
-        print(
-            "WITHDRAWAL ERROR:",
-            repr(exc)
-        )
+        print("WITHDRAWAL ERROR:", repr(exc), flush=True)
 
         error_text = str(exc)
 
-        if (
-            "Minimum withdrawal is"
-            in error_text
-        ):
-
+        if "Minimum withdrawal is" in error_text:
             return jsonify({
                 "ok": False,
                 "error":
@@ -1101,11 +814,7 @@ def request_withdrawal():
                     "2,500 coins."
             }), 400
 
-        if (
-            "Insufficient balance"
-            in error_text
-        ):
-
+        if "Insufficient balance" in error_text:
             return jsonify({
                 "ok": False,
                 "error":
@@ -1113,11 +822,7 @@ def request_withdrawal():
                     "for this withdrawal."
             }), 400
 
-        if (
-            "multiple of 50"
-            in error_text
-        ):
-
+        if "multiple of 50" in error_text:
             return jsonify({
                 "ok": False,
                 "error":
@@ -1125,26 +830,16 @@ def request_withdrawal():
                     "of 50 coins."
             }), 400
 
-        if (
-            "Invalid UPI details"
-            in error_text
-        ):
-
+        if "Invalid UPI details" in error_text:
             return jsonify({
                 "ok": False,
-                "error":
-                    "Please enter valid UPI details."
+                "error": "Please enter valid UPI details."
             }), 400
 
-        if (
-            "User account not found"
-            in error_text
-        ):
-
+        if "User account not found" in error_text:
             return jsonify({
                 "ok": False,
-                "error":
-                    "User account not found."
+                "error": "User account not found."
             }), 500
 
         return jsonify({
@@ -1158,51 +853,81 @@ def request_withdrawal():
 # =========================================================
 
 async def setup_telegram_bot():
-    """Setup and start the Telegram bot"""
-    
+    """Create the Telegram bot and register its commands."""
+
     bot_app = Application.builder().token(BOT_TOKEN).build()
-    
-    # Add command handlers
-    bot_app.add_handler(CommandHandler("start", start_command))
-    bot_app.add_handler(CommandHandler("help", help_command))
-    bot_app.add_handler(CommandHandler("balance", balance_command))
-    
+
+    bot_app.add_handler(
+        CommandHandler("start", start_command)
+    )
+    bot_app.add_handler(
+        CommandHandler("help", help_command)
+    )
+    bot_app.add_handler(
+        CommandHandler("balance", balance_command)
+    )
+
     return bot_app
 
 
 async def main():
-    """Main entry point"""
-    
-    # Setup Telegram bot
-    bot_app = await setup_telegram_bot()
-    
-    # Start bot polling
-    async with bot_app:
-        await bot_app.start()
-        print("✅ Telegram bot started (polling mode)")
-        
-        # Keep bot running
-        await asyncio.Event().wait()
+    """Initialize the bot and start receiving Telegram updates."""
 
+    bot_app = await setup_telegram_bot()
+
+    async with bot_app:
+
+        await bot_app.start()
+
+        if bot_app.updater is None:
+            raise RuntimeError(
+                "Telegram updater is not available."
+            )
+
+        await bot_app.updater.start_polling()
+
+        print(
+            "Telegram bot started successfully; "
+            "polling for updates.",
+            flush=True
+        )
+
+        try:
+            await asyncio.Event().wait()
+
+        finally:
+            if bot_app.updater.running:
+                await bot_app.updater.stop()
+
+            if bot_app.running:
+                await bot_app.stop()
+
+
+# =========================================================
+# START FLASK AND TELEGRAM
+# =========================================================
 
 if __name__ == "__main__":
-    
-    # Try to run both Flask and Telegram bot
-    import threading
-    
+
     def run_flask():
-        port = int(os.environ.get("PORT", 5000))
-        app.run(host="0.0.0.0", port=port, debug=False)
-    
-    def run_telegram_bot():
-        asyncio.run(main())
-    
-    # Run Flask in a thread
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
+        port = int(os.environ.get("PORT", "10000"))
+
+        app.run(
+            host="0.0.0.0",
+            port=port,
+            debug=False,
+            use_reloader=False
+        )
+
+    flask_thread = threading.Thread(
+        target=run_flask,
+        daemon=True
+    )
+
     flask_thread.start()
-    
-    # Run Telegram bot in main thread
+
     try:
         asyncio.run(main())
+
     except KeyboardInterrupt:
-        print("\n⚠️ Bot stopped")
+        print("Bot stopped.", flush=True)
