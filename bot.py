@@ -42,9 +42,7 @@ ADSGRAM_CALLBACK_SECRET = os.environ.get(
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-MINI_APP_URL = "https://t.me/CaptchaEarnIndiaBot/earncoins"
-CHANNEL_URL = "https://t.me/CaptchaEarnIndiaOfficial"
-
+MINI_APP_URL = "https://himanshu02000.github.io/captcha-earn/"CHANNEL_URL = "https://t.me/CaptchaEarnIndiaOfficial"
 print("Starting Captcha Earn Bot...", flush=True)
 
 supabase = create_client(
