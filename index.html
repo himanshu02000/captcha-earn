@@ -6,7 +6,10 @@
   <meta name="theme-color" content="#1769d3">
   <title>Captcha Earn India</title>
 
+  <!-- Telegram Web App SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <!-- AdsGram -->
   <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
 
   <style>
@@ -342,13 +345,11 @@
   </div>
 </header>
 
-
 <main class="container">
 
   <p id="welcome" class="welcome">
     Connecting to your account...
   </p>
-
 
   <section class="card balance-card">
 
@@ -363,7 +364,6 @@
     <div class="coin-icon">🪙</div>
 
   </section>
-
 
   <section class="card">
 
@@ -385,7 +385,6 @@
       This helps keep the platform safe and fair.
     </p>
 
-
     <div class="captcha-box">
 
       <img
@@ -394,7 +393,6 @@
       >
 
     </div>
-
 
     <input
       id="answer"
@@ -407,14 +405,13 @@
       spellcheck="false"
     >
 
-
     <button
       id="submit-button"
       type="button"
+      disabled
     >
       Submit CAPTCHA
     </button>
-
 
     <div
       id="new-button"
@@ -425,13 +422,11 @@
       ↻ Get a new CAPTCHA
     </div>
 
-
     <p
       id="message"
       role="status"
       aria-live="polite"
     ></p>
-
 
     <div class="reward-strip">
 
@@ -451,7 +446,6 @@
 
   </section>
 
-
   <section class="card" id="auto-bot-card">
 
     <h2>🤖 Auto-Solve CAPTCHA</h2>
@@ -465,7 +459,6 @@
       This demo does not submit answers to the earning system or change your balance.
     </p>
 
-
     <div class="captcha-box">
 
       <div
@@ -477,7 +470,6 @@
 
     </div>
 
-
     <p
       id="auto-bot-status"
       class="muted"
@@ -487,19 +479,17 @@
       Tap Start Bot to begin the demo.
     </p>
 
-
     <div class="countdown">
       <span id="auto-countdown">10</span>s
     </div>
 
-
     <button
       id="auto-start-button"
       type="button"
+      disabled
     >
       ▶ Start Bot
     </button>
-
 
     <button
       id="auto-stop-button"
@@ -512,7 +502,6 @@
 
   </section>
 
-
   <section class="card">
 
     <h2>📺 Watch Ads</h2>
@@ -522,14 +511,13 @@
       Ads may not always be available.
     </p>
 
-
     <button
       id="ad-button"
       type="button"
+      disabled
     >
       Watch an Ad
     </button>
-
 
     <p
       id="ad-message"
@@ -538,7 +526,6 @@
     ></p>
 
   </section>
-
 
   <section class="card">
 
@@ -552,7 +539,6 @@
     <p class="muted">
       Payments are made through UPI. Every request is manually reviewed.
     </p>
-
 
     <form id="withdraw-form">
 
@@ -570,7 +556,6 @@
         required
       >
 
-
       <label for="upi-id">
         Your UPI ID
       </label>
@@ -584,7 +569,6 @@
         required
       >
 
-
       <p
         id="withdraw-estimate"
         class="muted"
@@ -592,14 +576,13 @@
         Enter a coin amount to see the payout.
       </p>
 
-
       <button
         id="withdraw-button"
         type="submit"
+        disabled
       >
         Submit Withdrawal Request
       </button>
-
 
       <p
         id="withdraw-message"
@@ -608,7 +591,6 @@
       ></p>
 
     </form>
-
 
     <div class="developer-note">
 
@@ -627,42 +609,37 @@
 
   </section>
 
-
   <footer>
     Captcha Earn India • Points and rewards
   </footer>
 
 </main>
 
-
 <script>
 "use strict";
 
-/*
-  ============================================================
-  BACKEND CONNECTION
-  ============================================================
-*/
+/* ============================================================
+   BACKEND
+   ============================================================ */
 
-const API_BASE = "https://captcha-earning-bot.onrender.com";
-
-
-/*
-  ============================================================
-  TELEGRAM
-  ============================================================
-*/
-
-const telegramApp = window.Telegram?.WebApp;
+const API_BASE =
+  "https://captcha-earning-bot.onrender.com";
 
 
-/*
-  ============================================================
-  PAGE ELEMENTS
-  ============================================================
-*/
+/* ============================================================
+   TELEGRAM STATE
+   ============================================================ */
 
-const welcome = document.getElementById("welcome");
+let telegramApp = null;
+let initData = "";
+
+
+/* ============================================================
+   PAGE ELEMENTS
+   ============================================================ */
+
+const welcome =
+  document.getElementById("welcome");
 
 const balanceElement =
   document.getElementById("balance");
@@ -725,13 +702,9 @@ const autoStopButton =
   document.getElementById("auto-stop-button");
 
 
-/*
-  ============================================================
-  APP VARIABLES
-  ============================================================
-*/
-
-let initData = "";
+/* ============================================================
+   APP VARIABLES
+   ============================================================ */
 
 let challengeId = null;
 
@@ -753,89 +726,224 @@ const demoChars =
   "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 
-/*
-  ============================================================
-  TELEGRAM INITIALIZATION
-  ============================================================
-*/
+/* ============================================================
+   TELEGRAM INITIALIZATION
+   ============================================================ */
 
-if (telegramApp) {
+function getTelegramApp() {
 
-  telegramApp.ready();
+  if (
+    window.Telegram &&
+    window.Telegram.WebApp
+  ) {
 
-  telegramApp.expand();
+    return window.Telegram.WebApp;
 
-  initData = telegramApp.initData || "";
+  }
+
+  return null;
 
 }
 
 
-/*
-  ============================================================
-  API REQUEST
-  ============================================================
-*/
+function initializeTelegram() {
 
-async function apiRequest(endpoint, data = {}) {
-
-  const response = await fetch(
-    API_BASE + endpoint,
-    {
-      method: "POST",
-
-      headers: {
-        "Content-Type": "application/json"
-      },
-
-      body: JSON.stringify({
-        ...data,
-        initData
-      })
-    }
-  );
+  telegramApp =
+    getTelegramApp();
 
 
-  const result =
-    await response.json().catch(() => ({}));
+  if (!telegramApp) {
+
+    return false;
+
+  }
 
 
-  if (!response.ok || result.ok !== true) {
+  try {
 
-    throw new Error(
-      result.error ||
-      "Something went wrong. Please try again."
+    telegramApp.ready();
+
+    telegramApp.expand();
+
+  } catch (error) {
+
+    console.log(
+      "Telegram initialization warning:",
+      error
     );
 
   }
 
 
-  return result;
+  initData =
+    telegramApp.initData || "";
+
+
+  return Boolean(initData);
 
 }
 
 
 /*
-  ============================================================
-  BALANCE
-  ============================================================
+  Telegram can take a short moment to initialize
+  inside its WebView.
+
+  Therefore we retry instead of checking only once.
 */
+
+async function waitForTelegram() {
+
+  const maxAttempts = 50;
+
+  for (
+    let attempt = 0;
+    attempt < maxAttempts;
+    attempt++
+  ) {
+
+    if (initializeTelegram()) {
+
+      return true;
+
+    }
+
+
+    await new Promise(
+      resolve => setTimeout(resolve, 100)
+    );
+
+  }
+
+
+  /*
+    One final attempt.
+  */
+
+  initializeTelegram();
+
+  return Boolean(
+    telegramApp &&
+    initData
+  );
+
+}
+
+
+/* ============================================================
+   API REQUEST
+   ============================================================ */
+
+async function apiRequest(
+  endpoint,
+  data = {}
+) {
+
+  if (!initData) {
+
+    throw new Error(
+      "Telegram authentication is not ready. Please reopen the Mini App from the bot."
+    );
+
+  }
+
+
+  const controller =
+    new AbortController();
+
+  const timeout =
+    setTimeout(
+      () => controller.abort(),
+      20000
+    );
+
+
+  try {
+
+    const response =
+      await fetch(
+        API_BASE + endpoint,
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json"
+          },
+
+          body: JSON.stringify({
+            ...data,
+            initData: initData
+          }),
+
+          signal: controller.signal
+        }
+      );
+
+
+    const result =
+      await response
+        .json()
+        .catch(() => ({}));
+
+
+    if (
+      !response.ok ||
+      result.ok !== true
+    ) {
+
+      throw new Error(
+        result.error ||
+        "Something went wrong. Please try again."
+      );
+
+    }
+
+
+    return result;
+
+  } catch (error) {
+
+    if (
+      error.name === "AbortError"
+    ) {
+
+      throw new Error(
+        "The server is taking too long to respond. Please try again."
+      );
+
+    }
+
+
+    throw error;
+
+  } finally {
+
+    clearTimeout(timeout);
+
+  }
+
+}
+
+
+/* ============================================================
+   BALANCE
+   ============================================================ */
 
 function setBalance(value) {
 
-  balanceElement.textContent = value;
+  balanceElement.textContent =
+    value;
 
-  topBalanceElement.textContent = value;
+  topBalanceElement.textContent =
+    value;
 
   updateWithdrawalEstimate();
 
 }
 
 
-/*
-  ============================================================
-  BUSY STATE
-  ============================================================
-*/
+/* ============================================================
+   BUSY STATE
+   ============================================================ */
 
 function setBusy(value) {
 
@@ -853,32 +961,9 @@ function setBusy(value) {
 }
 
 
-/*
-  ============================================================
-  REFRESH BALANCE
-  ============================================================
-*/
-
-async function refreshBalance() {
-
-  const result =
-    await apiRequest(
-      "/api/session",
-      {}
-    );
-
-  setBalance(result.balance);
-
-  return Number(result.balance);
-
-}
-
-
-/*
-  ============================================================
-  LOAD CAPTCHA
-  ============================================================
-*/
+/* ============================================================
+   LOAD CAPTCHA
+   ============================================================ */
 
 async function loadChallenge() {
 
@@ -913,27 +998,31 @@ async function loadChallenge() {
       result.challenge_id;
 
 
-    captchaImage.src =
-      "data:image/svg+xml;charset=utf-8," +
-      encodeURIComponent(
-        result.captcha_svg
-      );
+    if (result.captcha_svg) {
 
-
-    setBalance(result.balance);
-
-
-    if (result.name) {
-
-      welcome.textContent =
-        "Welcome, " +
-        result.name +
-        "!";
+      captchaImage.src =
+        "data:image/svg+xml;charset=utf-8," +
+        encodeURIComponent(
+          result.captcha_svg
+        );
 
     }
 
 
-    submitButton.disabled = false;
+    setBalance(
+      result.balance
+    );
+
+
+    welcome.textContent =
+      "Welcome, " +
+      (result.name || "User") +
+      "!";
+
+
+    submitButton.disabled =
+      false;
+
 
   } catch (error) {
 
@@ -949,16 +1038,19 @@ async function loadChallenge() {
 }
 
 
-/*
-  ============================================================
-  CHECK CAPTCHA ANSWER
-  ============================================================
-*/
+/* ============================================================
+   CAPTCHA ANSWER
+   ============================================================ */
 
 async function checkAnswer() {
 
-  if (busy || !challengeId) {
+  if (
+    busy ||
+    !challengeId
+  ) {
+
     return;
+
   }
 
 
@@ -993,13 +1085,18 @@ async function checkAnswer() {
       await apiRequest(
         "/api/answer",
         {
-          challenge_id: challengeId,
-          answer: value
+          challenge_id:
+            challengeId,
+
+          answer:
+            value
         }
       );
 
 
-    setBalance(result.balance);
+    setBalance(
+      result.balance
+    );
 
 
     messageElement.textContent =
@@ -1013,11 +1110,14 @@ async function checkAnswer() {
 
     challengeId = null;
 
-    captchaImage.removeAttribute("src");
+    captchaImage.removeAttribute(
+      "src"
+    );
 
     answerInput.value = "";
 
-    submitButton.disabled = true;
+    submitButton.disabled =
+      true;
 
 
   } catch (error) {
@@ -1044,11 +1144,9 @@ async function checkAnswer() {
 }
 
 
-/*
-  ============================================================
-  ADSGRAM
-  ============================================================
-*/
+/* ============================================================
+   ADSGRAM
+   ============================================================ */
 
 async function watchAd() {
 
@@ -1057,7 +1155,10 @@ async function watchAd() {
   }
 
 
-  if (!telegramApp || !initData) {
+  if (
+    !telegramApp ||
+    !initData
+  ) {
 
     adMessage.textContent =
       "Open this Mini App through your Telegram bot first.";
@@ -1069,7 +1170,8 @@ async function watchAd() {
 
   if (
     !window.Adsgram ||
-    typeof window.Adsgram.init !== "function"
+    typeof window.Adsgram.init !==
+      "function"
   ) {
 
     adMessage.textContent =
@@ -1119,11 +1221,9 @@ async function watchAd() {
 }
 
 
-/*
-  ============================================================
-  WITHDRAWAL ESTIMATE
-  ============================================================
-*/
+/* ============================================================
+   WITHDRAWAL ESTIMATE
+   ============================================================ */
 
 function updateWithdrawalEstimate() {
 
@@ -1171,11 +1271,9 @@ function updateWithdrawalEstimate() {
 }
 
 
-/*
-  ============================================================
-  WITHDRAWAL
-  ============================================================
-*/
+/* ============================================================
+   WITHDRAWAL
+   ============================================================ */
 
 async function submitWithdrawal(event) {
 
@@ -1187,7 +1285,10 @@ async function submitWithdrawal(event) {
   }
 
 
-  if (!telegramApp || !initData) {
+  if (
+    !telegramApp ||
+    !initData
+  ) {
 
     withdrawMessage.textContent =
       "Open this Mini App through your Telegram bot first.";
@@ -1289,8 +1390,8 @@ async function submitWithdrawal(event) {
       await apiRequest(
         "/api/withdraw",
         {
-          coins,
-          upi
+          coins: coins,
+          upi: upi
         }
       );
 
@@ -1299,7 +1400,9 @@ async function submitWithdrawal(event) {
       "Request submitted. Request ID: " +
       result.withdrawal_id +
       ". Amount: ₹" +
-      Number(result.amount_inr).toFixed(2) +
+      Number(
+        result.amount_inr
+      ).toFixed(2) +
       ". Status: Pending.";
 
 
@@ -1308,7 +1411,16 @@ async function submitWithdrawal(event) {
     upiInput.value = "";
 
 
-    await refreshBalance();
+    const refreshed =
+      await apiRequest(
+        "/api/session",
+        {}
+      );
+
+
+    setBalance(
+      refreshed.balance
+    );
 
 
   } catch (error) {
@@ -1329,18 +1441,20 @@ async function submitWithdrawal(event) {
 }
 
 
-/*
-  ============================================================
-  AUTO-SOLVE DEMO
-  ============================================================
-*/
+/* ============================================================
+   AUTO SOLVE DEMO
+   ============================================================ */
 
 function makeDemoCaptcha() {
 
   let text = "";
 
 
-  for (let i = 0; i < 5; i++) {
+  for (
+    let i = 0;
+    i < 5;
+    i++
+  ) {
 
     text +=
       demoChars[
@@ -1360,11 +1474,17 @@ function makeDemoCaptcha() {
 
 function clearAutoTimer() {
 
-  if (autoBotTimer !== null) {
+  if (
+    autoBotTimer !== null
+  ) {
 
-    clearTimeout(autoBotTimer);
+    clearTimeout(
+      autoBotTimer
+    );
 
-    clearInterval(autoBotTimer);
+    clearInterval(
+      autoBotTimer
+    );
 
     autoBotTimer = null;
 
@@ -1432,7 +1552,9 @@ function runDemoCycle() {
         autoCountdownValue;
 
 
-      if (autoCountdownValue <= 0) {
+      if (
+        autoCountdownValue <= 0
+      ) {
 
         clearAutoTimer();
 
@@ -1467,11 +1589,9 @@ function runDemoCycle() {
 }
 
 
-/*
-  ============================================================
-  BUTTON EVENTS
-  ============================================================
-*/
+/* ============================================================
+   EVENTS
+   ============================================================ */
 
 autoStartButton.addEventListener(
   "click",
@@ -1482,7 +1602,10 @@ autoStartButton.addEventListener(
     }
 
 
-    if (!telegramApp || !initData) {
+    if (
+      !telegramApp ||
+      !initData
+    ) {
 
       autoStatus.textContent =
         "Please open this Mini App through your Telegram bot.";
@@ -1571,30 +1694,38 @@ answerInput.addEventListener(
 );
 
 
-/*
-  ============================================================
-  START APP
-  ============================================================
-*/
+/* ============================================================
+   START APP
+   ============================================================ */
 
 async function startApp() {
 
+  welcome.textContent =
+    "Opening Captcha Earn India...";
+
+
   /*
-    Telegram Mini App authentication check
+    IMPORTANT:
+    Wait for Telegram WebApp to become available.
   */
 
-  if (!telegramApp || !initData) {
+  const telegramReady =
+    await waitForTelegram();
+
+
+  if (
+    !telegramReady ||
+    !telegramApp ||
+    !initData
+  ) {
 
     welcome.textContent =
       "Please open this Mini App from your Telegram bot.";
 
     messageElement.textContent =
-      "Your Telegram account could not be verified.";
+      "Telegram authentication could not be detected. Please close this page and open Captcha Earn again using the 🎮 Open Captcha Earn button.";
 
     submitButton.disabled = true;
-
-    newButton.style.pointerEvents =
-      "none";
 
     adButton.disabled = true;
 
@@ -1602,29 +1733,21 @@ async function startApp() {
 
     autoStartButton.disabled = true;
 
-    autoStopButton.disabled = true;
-
     return;
 
   }
 
 
   /*
-    The /api/challenge endpoint now does both:
-    1. Verify the Telegram user
-    2. Load the user's balance
-    3. Create the CAPTCHA
-    4. Return the user's name
-
-    This avoids making /api/session and /api/challenge
-    as two separate requests when the Mini App opens.
+    Telegram is ready.
+    Now contact Render.
   */
-
-  setBusy(true);
-
 
   welcome.textContent =
     "Connecting to your account...";
+
+
+  setBusy(true);
 
 
   try {
@@ -1637,7 +1760,7 @@ async function startApp() {
 
 
     /*
-      User name
+      NAME
     */
 
     welcome.textContent =
@@ -1647,10 +1770,12 @@ async function startApp() {
 
 
     /*
-      Balance
+      BALANCE
     */
 
-    setBalance(result.balance);
+    setBalance(
+      result.balance
+    );
 
 
     /*
@@ -1661,18 +1786,38 @@ async function startApp() {
       result.challenge_id;
 
 
-    captchaImage.src =
-      "data:image/svg+xml;charset=utf-8," +
-      encodeURIComponent(
-        result.captcha_svg
+    if (result.captcha_svg) {
+
+      captchaImage.src =
+        "data:image/svg+xml;charset=utf-8," +
+        encodeURIComponent(
+          result.captcha_svg
+        );
+
+    } else {
+
+      throw new Error(
+        "The server did not return a CAPTCHA."
       );
+
+    }
 
 
     /*
-      Enable CAPTCHA submit
+      ENABLE FEATURES
     */
 
     submitButton.disabled = false;
+
+    adButton.disabled = false;
+
+    withdrawButton.disabled = false;
+
+    autoStartButton.disabled = false;
+
+
+    messageElement.textContent =
+      "";
 
 
   } catch (error) {
@@ -1692,8 +1837,7 @@ async function startApp() {
 
     submitButton.disabled = true;
 
-    newButton.style.pointerEvents =
-      "none";
+    adButton.disabled = true;
 
     withdrawButton.disabled = true;
 
@@ -1708,13 +1852,13 @@ async function startApp() {
 }
 
 
-/*
-  START
-*/
+/* ============================================================
+   START
+   ============================================================ */
 
 startApp();
 
 </script>
 
 </body>
-  </html>
+</html>
