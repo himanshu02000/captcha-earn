@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -172,6 +173,9 @@
 <script>
 "use strict";
 
+// FIX: Send API requests to the public Render backend.
+const API_BASE = "https://captcha-earning-bot.onrender.com";
+
 const telegramApp = window.Telegram?.WebApp;
 const welcome = document.getElementById("welcome");
 const balanceElement = document.getElementById("balance");
@@ -224,6 +228,7 @@ function buildCaptchaSvg(text) {
   const width = 560;
   const height = 180;
   const noise = [];
+
   for (let i = 0; i < 90; i++) {
     const x = Math.floor(Math.random() * width);
     const y = Math.floor(Math.random() * height);
@@ -233,6 +238,7 @@ function buildCaptchaSvg(text) {
   }
 
   const lines = [];
+
   for (let i = 0; i < 8; i++) {
     const x1 = Math.floor(Math.random() * width);
     const y1 = Math.floor(Math.random() * height);
@@ -245,6 +251,7 @@ function buildCaptchaSvg(text) {
   const chars = [];
   const startX = 58;
   const spacing = 92;
+
   for (let index = 0; index < text.length; index++) {
     const char = text[index];
     const x = startX + index * spacing;
@@ -252,6 +259,7 @@ function buildCaptchaSvg(text) {
     const rotation = Math.floor(Math.random() * 31) - 15;
     const skew = Math.floor(Math.random() * 15) - 7;
     const fontSize = 74 + Math.floor(Math.random() * 13);
+
     chars.push(`<text x="${x}" y="${y}" font-family="Arial, sans-serif" font-size="${fontSize}px" font-weight="900" fill="#111827" transform="rotate(${rotation} ${x} ${y}) skewX(${skew})">${char}</text>`);
   }
 
@@ -272,9 +280,12 @@ async function apiRequest(endpoint, data = {}) {
     throw new Error("Demo mode is active. Real backend calls are disabled in this browser session.");
   }
 
-  const response = await fetch(endpoint, {
+  // FIX: Use API_BASE so requests go to Render, not GitHub Pages.
+  const response = await fetch(API_BASE + endpoint, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json"
+    },
     body: JSON.stringify({ ...data, initData })
   });
 
@@ -291,9 +302,11 @@ function setBalance(value) {
   const numericValue = Number(value) || 0;
   balanceElement.textContent = numericValue;
   topBalanceElement.textContent = numericValue;
+
   if (demoMode) {
     demoBalance = numericValue;
   }
+
   updateWithdrawalEstimate();
 }
 
@@ -317,9 +330,11 @@ async function refreshBalance() {
 
 function makeDemoCaptcha() {
   let text = "";
+
   for (let i = 0; i < 5; i++) {
     text += demoChars[Math.floor(Math.random() * demoChars.length)];
   }
+
   return text;
 }
 
@@ -328,7 +343,10 @@ function loadDemoChallenge() {
   challengeId = "demo-" + Date.now();
   messageElement.textContent = "";
   answerInput.value = "";
-  captchaImage.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(buildCaptchaSvg(demoChallengeText));
+
+  captchaImage.src = "data:image/svg+xml;charset=utf-8," +
+    encodeURIComponent(buildCaptchaSvg(demoChallengeText));
+
   submitButton.disabled = false;
   setBalance(demoBalance);
 }
@@ -343,11 +361,13 @@ async function loadChallenge() {
     messageElement.textContent = "";
     answerInput.value = "";
     captchaImage.removeAttribute("src");
+
     try {
       loadDemoChallenge();
     } finally {
       setBusy(false);
     }
+
     return;
   }
 
@@ -361,7 +381,10 @@ async function loadChallenge() {
   try {
     const result = await apiRequest("/api/challenge", {});
     challengeId = result.challenge_id;
-    captchaImage.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(result.captcha_svg);
+
+    captchaImage.src = "data:image/svg+xml;charset=utf-8," +
+      encodeURIComponent(result.captcha_svg);
+
     setBalance(result.balance);
     submitButton.disabled = false;
   } catch (error) {
@@ -402,6 +425,7 @@ async function checkAnswer() {
     } finally {
       setBusy(false);
     }
+
     return;
   }
 
@@ -482,8 +506,10 @@ function updateWithdrawalEstimate() {
     return;
   }
 
-  withdrawEstimate.textContent = "Estimated payout: ₹" + (coins / 50).toFixed(2) +
-    ". Available balance: " + (Number.isFinite(balance) ? balance : "—") + " coins.";
+  withdrawEstimate.textContent = "Estimated payout: ₹" +
+    (coins / 50).toFixed(2) +
+    ". Available balance: " +
+    (Number.isFinite(balance) ? balance : "—") + " coins.";
 }
 
 async function submitWithdrawal(event) {
