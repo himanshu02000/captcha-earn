@@ -48,6 +48,9 @@
     .demo-captcha { padding: 30px 10px; text-align: center; font-size: 28px; font-weight: 800; letter-spacing: 8px; color: #1769d3; overflow-wrap: anywhere; }
     .countdown { text-align: center; font-size: 32px; font-weight: 800; margin: 16px 0 4px; }
     .demo-label { display: inline-block; padding: 5px 9px; border-radius: 999px; background: #fff4d6; color: #845900; font-size: 12px; font-weight: 700; margin-bottom: 10px; }
+    .live-label { display: inline-block; padding: 5px 9px; border-radius: 999px; background: #d9f5e3; color: #0f7a3d; font-size: 12px; font-weight: 700; margin-bottom: 10px; }
+    .session-strip { display: flex; justify-content: space-between; gap: 10px; margin: 4px 0 12px; padding: 10px 13px; border-radius: 13px; background: #f0f7ff; font-size: 14px; }
+    #auto-captcha-image { display: block; width: 100%; height: auto; min-height: 130px; }
     @media (max-width: 520px) {
       .header-inner { align-items: flex-start; }
       .brand h1 { font-size: 18px; }
@@ -113,16 +116,22 @@
 
   <section class="card" id="auto-bot-card">
     <h2>🤖 Auto-Solve CAPTCHA</h2>
-    <span class="demo-label">DEMO MODE — NO COINS EARNED</span>
+    <span id="auto-mode-label" class="live-label">LIVE — EARNS REAL COINS</span>
     <p class="muted">
-      Watch an automated CAPTCHA demonstration with a 10-second countdown.
-      This demo does not submit answers to the earning system or change your balance.
+      Tap Start Bot and the bot solves CAPTCHAs for you in a
+      <strong>15-minute session</strong>. Each cycle: watch a short ad,
+      then the bot auto-solves the CAPTCHA in 10 seconds and you earn
+      <strong>+1 coin</strong>.
     </p>
+    <div class="session-strip">
+      <div>⏱ Session left: <strong id="auto-session-timer">15:00</strong></div>
+      <div>🪙 Earned: <strong id="auto-session-coins">0</strong></div>
+    </div>
     <div class="captcha-box">
-      <div id="auto-captcha-display" class="demo-captcha">READY</div>
+      <img id="auto-captcha-image" alt="Auto-bot CAPTCHA challenge">
     </div>
     <p id="auto-bot-status" class="muted" role="status" aria-live="polite">
-      Tap Start Bot to begin the demo.
+      Tap Start Bot to begin a 15-minute earning session.
     </p>
     <div class="countdown"><span id="auto-countdown">10</span>s</div>
     <button id="auto-start-button" type="button">▶ Start Bot</button>
@@ -194,7 +203,10 @@ const withdrawButton = document.getElementById("withdraw-button");
 const withdrawMessage = document.getElementById("withdraw-message");
 const withdrawEstimate = document.getElementById("withdraw-estimate");
 
-const autoDisplay = document.getElementById("auto-captcha-display");
+const autoModeLabel = document.getElementById("auto-mode-label");
+const autoSessionTimerEl = document.getElementById("auto-session-timer");
+const autoSessionCoinsEl = document.getElementById("auto-session-coins");
+const autoCaptchaImage = document.getElementById("auto-captcha-image");
 const autoStatus = document.getElementById("auto-bot-status");
 const autoCountdown = document.getElementById("auto-countdown");
 const autoStartButton = document.getElementById("auto-start-button");
@@ -210,9 +222,14 @@ let adController = null;
 let demoBalance = 0;
 let demoMode = false;
 
+const AUTO_SESSION_SECONDS = 15 * 60;
+const AUTO_SOLVE_SECONDS = 10;
+
 let autoBotRunning = false;
-let autoBotTimer = null;
-let autoCountdownValue = 10;
+let autoRunToken = 0;
+let autoSessionEndsAt = 0;
+let autoSessionClock = null;
+let autoSessionCoins = 0;
 
 const demoChars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -596,73 +613,223 @@ async function submitWithdrawal(event) {
   }
 }
 
-function clearAutoTimer() {
-  if (autoBotTimer !== null) {
-    clearTimeout(autoBotTimer);
-    clearInterval(autoBotTimer);
-    autoBotTimer = null;
+function formatClock(totalSeconds) {
+  const clamped = Math.max(0, Math.floor(totalSeconds));
+  const minutes = Math.floor(clamped / 60);
+  const seconds = clamped % 60;
+  return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+}
+
+function autoSessionExpired() {
+  return Date.now() >= autoSessionEndsAt;
+}
+
+function updateAutoSessionClock() {
+  const remaining = Math.max(0, Math.ceil((autoSessionEndsAt - Date.now()) / 1000));
+  autoSessionTimerEl.textContent = formatClock(remaining);
+}
+
+function autoDelay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Shows one rewarded ad for the auto-bot. Resolves true only when the
+// ad was watched to completion. The ad is the ticket for the solve;
+// the coin itself is credited by /api/auto-solve, so /api/ad-reward
+// is intentionally NOT called here (its 60s cooldown is for manual ads).
+async function showAutoAd(token) {
+  while (adBusy && autoBotRunning && token === autoRunToken) {
+    autoStatus.textContent = "Waiting for the current ad to finish...";
+    await autoDelay(500);
+  }
+
+  if (token !== autoRunToken || !autoBotRunning) return false;
+
+  if (!window.Adsgram || typeof window.Adsgram.init !== "function") {
+    return false;
+  }
+
+  adBusy = true;
+
+  try {
+    if (!adController) {
+      adController = window.Adsgram.init({ blockId: "53035" });
+    }
+
+    const adResult = await adController.show();
+    return !!(adResult && adResult.done === true);
+  } catch (error) {
+    return false;
+  } finally {
+    adBusy = false;
   }
 }
 
-function stopAutoBot() {
-  autoBotRunning = false;
-  clearAutoTimer();
-  autoStartButton.disabled = false;
-  autoStopButton.disabled = true;
-  autoCountdown.textContent = "10";
-  autoDisplay.textContent = "STOPPED";
-  autoStatus.textContent = "Demo stopped. Your real balance has not changed.";
-}
+async function runAutoBotLoop(token) {
+  while (autoBotRunning && token === autoRunToken) {
+    if (autoSessionExpired()) break;
 
-function runDemoCycle() {
-  if (!autoBotRunning) return;
+    // 1. Each auto solve starts with a completed ad.
+    autoStatus.textContent = "📺 Showing a short ad before the next solve...";
+    const adDone = await showAutoAd(token);
 
-  autoDisplay.textContent = makeDemoCaptcha();
-  autoCountdownValue = 10;
-  autoCountdown.textContent = autoCountdownValue;
-  autoStatus.textContent = "Demo CAPTCHA generated. Demo completion in 10 seconds.";
+    if (token !== autoRunToken || !autoBotRunning) return;
+    if (autoSessionExpired()) break;
 
-  autoBotTimer = setInterval(() => {
-    if (!autoBotRunning) {
-      clearAutoTimer();
-      return;
+    if (!adDone) {
+      autoStatus.textContent = "Ad was not completed (skipped or unavailable). Retrying in 5 seconds...";
+      await autoDelay(5000);
+      continue;
     }
 
-    autoCountdownValue -= 1;
-    autoCountdown.textContent = autoCountdownValue;
+    // 2. Fetch a real CAPTCHA challenge and show it.
+    autoStatus.textContent = "🤖 Bot received a CAPTCHA. Auto-solving in 10 seconds...";
+    let challenge = null;
 
-    if (autoCountdownValue <= 0) {
-      clearAutoTimer();
-
-      if (!autoBotRunning) return;
-
-      autoStatus.textContent = "✅ Demo CAPTCHA completed. No coins were credited.";
-
-      autoBotTimer = setTimeout(() => {
-        autoBotTimer = null;
-
-        if (autoBotRunning) {
-          runDemoCycle();
-        }
-      }, 1500);
+    try {
+      challenge = await apiRequest("/api/challenge", {});
+    } catch (error) {
+      autoStatus.textContent = "Could not load a CAPTCHA (" + error.message + "). Retrying in 5 seconds...";
+      await autoDelay(5000);
+      continue;
     }
-  }, 1000);
+
+    if (token !== autoRunToken || !autoBotRunning) return;
+    if (autoSessionExpired()) break;
+
+    autoCaptchaImage.src = "data:image/svg+xml;charset=utf-8," +
+      encodeURIComponent(challenge.captcha_svg);
+
+    if (typeof challenge.balance !== "undefined") {
+      setBalance(challenge.balance);
+    }
+
+    // 3. 10-second auto-solve countdown.
+    let countdownOk = true;
+
+    for (let remaining = AUTO_SOLVE_SECONDS; remaining >= 0; remaining--) {
+      if (token !== autoRunToken || !autoBotRunning || autoSessionExpired()) {
+        countdownOk = false;
+        break;
+      }
+
+      autoCountdown.textContent = remaining;
+      autoStatus.textContent = "🤖 Bot is solving the CAPTCHA...";
+
+      if (remaining > 0) {
+        await autoDelay(1000);
+      }
+    }
+
+    if (!countdownOk) break;
+    if (token !== autoRunToken || !autoBotRunning) return;
+    if (autoSessionExpired()) break;
+
+    // 4. The bot submits the solution server-side and earns 1 coin.
+    autoStatus.textContent = "🤖 Submitting the solution...";
+
+    try {
+      const result = await apiRequest("/api/auto-solve", {
+        challenge_id: challenge.challenge_id
+      });
+
+      setBalance(result.balance);
+      autoSessionCoins += 1;
+      autoSessionCoinsEl.textContent = autoSessionCoins;
+      autoStatus.textContent = "✅ Auto-solved! +1 coin earned. Preparing the next solve...";
+    } catch (error) {
+      autoStatus.textContent = "Solve failed (" + error.message + "). Retrying in 5 seconds...";
+      await autoDelay(5000);
+      continue;
+    }
+
+    await autoDelay(1500);
+  }
+
+  if (token === autoRunToken) {
+    finishAutoSession();
+  }
 }
 
-autoStartButton.addEventListener("click", () => {
+// Demo loop for browsers outside Telegram: same visuals, no coins.
+async function runDemoBotLoop(token) {
+  while (autoBotRunning && token === autoRunToken) {
+    autoCaptchaImage.src = "data:image/svg+xml;charset=utf-8," +
+      encodeURIComponent(buildCaptchaSvg(makeDemoCaptcha()));
+
+    autoStatus.textContent = "Demo mode: the bot is solving (no coins outside Telegram)...";
+
+    for (let remaining = AUTO_SOLVE_SECONDS; remaining >= 0; remaining--) {
+      if (token !== autoRunToken || !autoBotRunning) return;
+      autoCountdown.textContent = remaining;
+      if (remaining > 0) await autoDelay(1000);
+    }
+
+    autoStatus.textContent = "✅ Demo CAPTCHA completed. No coins were credited (demo mode).";
+    await autoDelay(1500);
+  }
+}
+
+function startAutoBot() {
   if (autoBotRunning) return;
 
-  if (!telegramApp || !initData) {
-    autoStatus.textContent = "Demo mode is active: this app is opened outside Telegram.";
-  }
-
+  autoRunToken += 1;
+  const token = autoRunToken;
   autoBotRunning = true;
+  autoSessionCoins = 0;
+  autoSessionCoinsEl.textContent = "0";
   autoStartButton.disabled = true;
   autoStopButton.disabled = false;
-  runDemoCycle();
-});
 
-autoStopButton.addEventListener("click", stopAutoBot);
+  if (demoMode) {
+    autoSessionTimerEl.textContent = "--:--";
+    autoStatus.textContent = "Demo mode is active outside Telegram: the bot runs as a demo and earns no coins.";
+    runDemoBotLoop(token);
+    return;
+  }
+
+  autoSessionEndsAt = Date.now() + AUTO_SESSION_SECONDS * 1000;
+  updateAutoSessionClock();
+  autoSessionClock = setInterval(updateAutoSessionClock, 1000);
+  adButton.disabled = true;
+  autoStatus.textContent = "🚀 Auto-bot session started! 15 minutes on the clock.";
+  runAutoBotLoop(token);
+}
+
+function stopAutoBot(message) {
+  autoRunToken += 1;
+  autoBotRunning = false;
+
+  if (autoSessionClock !== null) {
+    clearInterval(autoSessionClock);
+    autoSessionClock = null;
+  }
+
+  autoStartButton.disabled = false;
+  autoStopButton.disabled = true;
+  adButton.disabled = false;
+  autoCountdown.textContent = String(AUTO_SOLVE_SECONDS);
+
+  if (message) {
+    autoStatus.textContent = message;
+  }
+}
+
+function finishAutoSession() {
+  const earned = autoSessionCoins;
+  const coinWord = earned === 1 ? "coin" : "coins";
+
+  stopAutoBot(
+    "🏁 15-minute session complete! You earned " + earned + " " + coinWord +
+    " this session. Tap Start Bot to run another session."
+  );
+
+  autoSessionTimerEl.textContent = "00:00";
+  autoCaptchaImage.removeAttribute("src");
+}
+
+autoStartButton.addEventListener("click", startAutoBot);
+autoStopButton.addEventListener("click", () => stopAutoBot("Bot stopped. Coins earned so far this session: " + autoSessionCoins + "."));
 
 submitButton.addEventListener("click", checkAnswer);
 newButton.addEventListener("click", loadChallenge);
@@ -687,6 +854,8 @@ async function startApp() {
   if (!telegramApp || !initData) {
     demoMode = true;
     welcome.textContent = "Demo mode: opened outside Telegram. This lets you test the UI.";
+    autoModeLabel.textContent = "DEMO MODE — NO COINS EARNED";
+    autoModeLabel.className = "demo-label";
     setBalance(0);
     setBusy(false);
     withdrawButton.disabled = false;
@@ -702,6 +871,8 @@ async function startApp() {
   try {
     const result = await apiRequest("/api/session", {});
     welcome.textContent = "Welcome, " + (result.name || "User") + "!";
+    autoModeLabel.textContent = "LIVE — EARNS REAL COINS";
+    autoModeLabel.className = "live-label";
     setBalance(result.balance);
   } catch (error) {
     welcome.textContent = "Could not connect to your account.";
