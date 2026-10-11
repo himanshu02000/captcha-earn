@@ -198,10 +198,13 @@ const autoStopButton = document.getElementById("auto-stop-button");
 
 let initData = "";
 let challengeId = null;
+let demoChallengeText = "";
 let busy = false;
 let adBusy = false;
 let withdrawBusy = false;
 let adController = null;
+let demoBalance = 0;
+let demoMode = false;
 
 let autoBotRunning = false;
 let autoBotTimer = null;
@@ -209,54 +212,88 @@ let autoCountdownValue = 10;
 
 const demoChars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-function syncTelegramData() {
-  if (!telegramApp) {
-    initData = "";
-    return;
-  }
-
-  try {
-    telegramApp.ready();
-    telegramApp.expand();
-  } catch (error) {
-    console.warn("Telegram ready/expand failed:", error);
-  }
-
+if (telegramApp) {
+  telegramApp.ready();
+  telegramApp.expand();
   initData = telegramApp.initData || "";
-  console.log("Telegram initData length:", initData.length);
 }
 
-syncTelegramData();
+demoMode = !telegramApp || !initData;
+
+function buildCaptchaSvg(text) {
+  const width = 560;
+  const height = 180;
+  const noise = [];
+  for (let i = 0; i < 90; i++) {
+    const x = Math.floor(Math.random() * width);
+    const y = Math.floor(Math.random() * height);
+    const r = 1 + Math.floor(Math.random() * 3);
+    const opacity = (0.15 + Math.random() * 0.45).toFixed(2);
+    noise.push(`<circle cx="${x}" cy="${y}" r="${r}" fill="#334155" opacity="${opacity}"/>`);
+  }
+
+  const lines = [];
+  for (let i = 0; i < 8; i++) {
+    const x1 = Math.floor(Math.random() * width);
+    const y1 = Math.floor(Math.random() * height);
+    const x2 = Math.floor(Math.random() * width);
+    const y2 = Math.floor(Math.random() * height);
+    const strokeWidth = 1 + Math.floor(Math.random() * 3);
+    lines.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#64748b" stroke-width="${strokeWidth}" opacity="0.45"/>`);
+  }
+
+  const chars = [];
+  const startX = 58;
+  const spacing = 92;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    const x = startX + index * spacing;
+    const y = 118 + Math.floor(Math.random() * 20) - 10;
+    const rotation = Math.floor(Math.random() * 31) - 15;
+    const skew = Math.floor(Math.random() * 15) - 7;
+    const fontSize = 74 + Math.floor(Math.random() * 13);
+    chars.push(`<text x="${x}" y="${y}" font-family="Arial, sans-serif" font-size="${fontSize}px" font-weight="900" fill="#111827" transform="rotate(${rotation} ${x} ${y}) skewX(${skew})">${char}</text>`);
+  }
+
+  return `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
+      <rect width="100%" height="100%" rx="18" fill="#f7fafc"/>
+      ${noise.join("")}
+      ${lines.join("")}
+      ${chars.join("")}
+      <path d="M10 40 C120 100, 190 5, 290 55 S450 125, 550 35" fill="none" stroke="#1f2937" stroke-width="3" opacity="0.35"/>
+      <path d="M5 145 C110 90, 190 165, 310 120 S450 55, 555 135" fill="none" stroke="#475569" stroke-width="2" opacity="0.35"/>
+    </svg>
+  `;
+}
 
 async function apiRequest(endpoint, data = {}) {
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...data, initData })
-    });
-
-    let result = {};
-    try {
-      result = await response.json();
-    } catch (jsonError) {
-      console.warn("Could not parse JSON response from", endpoint, jsonError);
-    }
-
-    if (!response.ok || result.ok !== true) {
-      throw new Error(result.error || "Something went wrong. Please try again.");
-    }
-
-    return result;
-  } catch (error) {
-    console.error("API Error:", endpoint, error);
-    throw error;
+  if (demoMode) {
+    throw new Error("Demo mode is active. Real backend calls are disabled in this browser session.");
   }
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...data, initData })
+  });
+
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok || result.ok !== true) {
+    throw new Error(result.error || "Something went wrong. Please try again.");
+  }
+
+  return result;
 }
 
 function setBalance(value) {
-  balanceElement.textContent = value;
-  topBalanceElement.textContent = value;
+  const numericValue = Number(value) || 0;
+  balanceElement.textContent = numericValue;
+  topBalanceElement.textContent = numericValue;
+  if (demoMode) {
+    demoBalance = numericValue;
+  }
   updateWithdrawalEstimate();
 }
 
@@ -268,18 +305,51 @@ function setBusy(value) {
 }
 
 async function refreshBalance() {
-  try {
-    const result = await apiRequest("/api/session", {});
-    setBalance(result.balance);
-    return Number(result.balance);
-  } catch (error) {
-    console.error("Failed to refresh balance:", error);
-    return null;
+  if (demoMode) {
+    setBalance(demoBalance);
+    return Number(demoBalance);
   }
+
+  const result = await apiRequest("/api/session", {});
+  setBalance(result.balance);
+  return Number(result.balance);
+}
+
+function makeDemoCaptcha() {
+  let text = "";
+  for (let i = 0; i < 5; i++) {
+    text += demoChars[Math.floor(Math.random() * demoChars.length)];
+  }
+  return text;
+}
+
+function loadDemoChallenge() {
+  demoChallengeText = makeDemoCaptcha();
+  challengeId = "demo-" + Date.now();
+  messageElement.textContent = "";
+  answerInput.value = "";
+  captchaImage.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(buildCaptchaSvg(demoChallengeText));
+  submitButton.disabled = false;
+  setBalance(demoBalance);
 }
 
 async function loadChallenge() {
   if (busy) return;
+
+  if (demoMode) {
+    setBusy(true);
+    challengeId = null;
+    submitButton.disabled = true;
+    messageElement.textContent = "";
+    answerInput.value = "";
+    captchaImage.removeAttribute("src");
+    try {
+      loadDemoChallenge();
+    } finally {
+      setBusy(false);
+    }
+    return;
+  }
 
   setBusy(true);
   challengeId = null;
@@ -291,14 +361,11 @@ async function loadChallenge() {
   try {
     const result = await apiRequest("/api/challenge", {});
     challengeId = result.challenge_id;
-    captchaImage.src = "data:image/svg+xml;charset=utf-8," +
-      encodeURIComponent(result.captcha_svg);
+    captchaImage.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(result.captcha_svg);
     setBalance(result.balance);
     submitButton.disabled = false;
-    messageElement.textContent = "";
   } catch (error) {
-    messageElement.textContent = "Error loading CAPTCHA: " + error.message;
-    console.error("Challenge load failed:", error);
+    messageElement.textContent = error.message;
   } finally {
     setBusy(false);
   }
@@ -311,6 +378,30 @@ async function checkAnswer() {
 
   if (value.length !== 5) {
     messageElement.textContent = "Please enter all 5 CAPTCHA characters.";
+    return;
+  }
+
+  if (demoMode) {
+    setBusy(true);
+    messageElement.textContent = "Checking your CAPTCHA...";
+
+    try {
+      if (value === demoChallengeText) {
+        demoBalance += 1;
+        setBalance(demoBalance);
+        messageElement.textContent = "✅ Correct! 1 demo coin earned.";
+        challengeId = null;
+        demoChallengeText = "";
+        captchaImage.removeAttribute("src");
+        answerInput.value = "";
+        submitButton.disabled = true;
+        adMessage.textContent = "Demo mode: no real ad credit is sent.";
+      } else {
+        messageElement.textContent = "❌ Incorrect CAPTCHA. Try again.";
+      }
+    } finally {
+      setBusy(false);
+    }
     return;
   }
 
@@ -344,6 +435,11 @@ async function checkAnswer() {
 }
 
 async function watchAd() {
+  if (demoMode) {
+    adMessage.textContent = "Demo mode: ad watching is disabled because the app is not opened from Telegram.";
+    return;
+  }
+
   if (adBusy) return;
 
   if (!telegramApp || !initData) {
@@ -366,11 +462,9 @@ async function watchAd() {
 
     await adController.show();
 
-    adMessage.textContent =
-      "The ad finished. Reward confirmation depends on the configured provider callback.";
+    adMessage.textContent = "The ad finished. Reward confirmation depends on the configured provider callback.";
   } catch (error) {
-    adMessage.textContent =
-      "No ad could be shown or the ad was not completed. Your CAPTCHA coin is safe.";
+    adMessage.textContent = "No ad could be shown or the ad was not completed. Your CAPTCHA coin is safe.";
   } finally {
     adBusy = false;
     adButton.disabled = false;
@@ -396,6 +490,11 @@ async function submitWithdrawal(event) {
   event.preventDefault();
 
   if (withdrawBusy) return;
+
+  if (demoMode) {
+    withdrawMessage.textContent = "Demo mode only: real UPI withdrawal requests are disabled outside Telegram.";
+    return;
+  }
 
   if (!telegramApp || !initData) {
     withdrawMessage.textContent = "Open this Mini App through your Telegram bot first.";
@@ -457,16 +556,6 @@ async function submitWithdrawal(event) {
   }
 }
 
-function makeDemoCaptcha() {
-  let text = "";
-
-  for (let i = 0; i < 5; i++) {
-    text += demoChars[Math.floor(Math.random() * demoChars.length)];
-  }
-
-  return text;
-}
-
 function clearAutoTimer() {
   if (autoBotTimer !== null) {
     clearTimeout(autoBotTimer);
@@ -524,8 +613,7 @@ autoStartButton.addEventListener("click", () => {
   if (autoBotRunning) return;
 
   if (!telegramApp || !initData) {
-    autoStatus.textContent = "Please open this Mini App through your Telegram bot.";
-    return;
+    autoStatus.textContent = "Demo mode is active: this app is opened outside Telegram.";
   }
 
   autoBotRunning = true;
@@ -556,46 +644,26 @@ answerInput.addEventListener("keydown", event => {
 });
 
 async function startApp() {
-  console.log("Starting app...");
-  console.log("Telegram App available:", !!telegramApp);
-  console.log("Init Data available:", !!initData);
-
-  if (!telegramApp) {
-    welcome.textContent = "Please open this Mini App from your Telegram bot.";
-    messageElement.textContent = "This page is not running inside Telegram.";
-    submitButton.disabled = true;
-    newButton.style.pointerEvents = "none";
-    adButton.disabled = true;
-    withdrawButton.disabled = true;
-    autoStartButton.disabled = true;
+  if (!telegramApp || !initData) {
+    demoMode = true;
+    welcome.textContent = "Demo mode: opened outside Telegram. This lets you test the UI.";
+    setBalance(0);
+    setBusy(false);
+    withdrawButton.disabled = false;
+    adButton.disabled = false;
+    autoStartButton.disabled = false;
     autoStopButton.disabled = true;
-    return;
-  }
-
-  if (!initData) {
-    welcome.textContent = "Telegram data is missing. Please reopen the app from Telegram.";
-    messageElement.textContent = "The app was opened outside the bot or Telegram did not provide initData.";
-    submitButton.disabled = true;
-    newButton.style.pointerEvents = "none";
-    adButton.disabled = true;
-    withdrawButton.disabled = true;
-    autoStartButton.disabled = true;
-    autoStopButton.disabled = true;
+    await loadChallenge();
     return;
   }
 
   setBusy(true);
-  welcome.textContent = "Connecting...";
 
   try {
-    console.log("Calling /api/session...");
     const result = await apiRequest("/api/session", {});
-    console.log("Session result:", result);
     welcome.textContent = "Welcome, " + (result.name || "User") + "!";
     setBalance(result.balance);
-    messageElement.textContent = "";
   } catch (error) {
-    console.error("Session error:", error);
     welcome.textContent = "Could not connect to your account.";
     messageElement.textContent = error.message;
     setBusy(false);
@@ -608,11 +676,7 @@ async function startApp() {
   await loadChallenge();
 }
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", startApp);
-} else {
-  setTimeout(startApp, 100);
-}
+startApp();
 </script>
 </body>
 </html>
