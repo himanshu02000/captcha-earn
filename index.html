@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#1769d3">
   <title>Captcha Earn India</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
   <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
   <style>
     * { box-sizing: border-box; }
@@ -99,7 +98,7 @@
     <input id="answer" type="text" inputmode="text" maxlength="5"
       placeholder="Enter the 5 characters" autocomplete="off"
       autocapitalize="characters" spellcheck="false">
-    <button id="submit-button" type="button">Submit CAPTCHA</button>
+    <button id="submit-button" type="button" disabled>Submit CAPTCHA</button>
     <div id="new-button" class="refresh" role="button" tabindex="0">↻ Get a new CAPTCHA</div>
     <p id="message" role="status" aria-live="polite"></p>
     <div class="reward-strip">
@@ -125,7 +124,7 @@
       Tap Start Bot to begin the demo.
     </p>
     <div class="countdown"><span id="auto-countdown">10</span>s</div>
-    <button id="auto-start-button" type="button">▶ Start Bot</button>
+    <button id="auto-start-button" type="button" disabled>▶ Start Bot</button>
     <button id="auto-stop-button" class="secondary" type="button" disabled>■ Stop Bot</button>
   </section>
 
@@ -135,7 +134,7 @@
       Complete an available reward ad for an additional coin.
       Ads may not always be available.
     </p>
-    <button id="ad-button" type="button">Watch an Ad</button>
+    <button id="ad-button" type="button" disabled>Watch an Ad</button>
     <p id="ad-message" role="status" aria-live="polite"></p>
   </section>
 
@@ -154,7 +153,7 @@
       <input id="upi-id" type="text" maxlength="200"
         placeholder="e.g. name@bank" autocomplete="off" required>
       <p id="withdraw-estimate" class="muted">Enter a coin amount to see the payout.</p>
-      <button id="withdraw-button" type="submit">Submit Withdrawal Request</button>
+      <button id="withdraw-button" type="submit" disabled>Submit Withdrawal Request</button>
       <p id="withdraw-message" role="status" aria-live="polite"></p>
     </form>
     <div class="developer-note">
@@ -173,10 +172,12 @@
 <script>
 "use strict";
 
-/* The frontend is on GitHub Pages; API requests must go to Render. */
+/* The GitHub Pages frontend sends its API requests to the Render backend. */
 const API_BASE = "https://captcha-earning-bot.onrender.com";
 
-const telegramApp = window.Telegram?.WebApp;
+let telegramApp = null;
+let initData = "";
+
 const welcome = document.getElementById("welcome");
 const balanceElement = document.getElementById("balance");
 const topBalanceElement = document.getElementById("top-balance");
@@ -200,38 +201,104 @@ const autoCountdown = document.getElementById("auto-countdown");
 const autoStartButton = document.getElementById("auto-start-button");
 const autoStopButton = document.getElementById("auto-stop-button");
 
-let initData = "";
 let challengeId = null;
 let busy = false;
 let adBusy = false;
 let withdrawBusy = false;
 let adController = null;
 let captchaObjectUrl = null;
-
 let autoBotRunning = false;
 let autoBotTimer = null;
 let autoCountdownValue = 10;
 
 const demoChars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-if (telegramApp) {
-  telegramApp.ready();
-  telegramApp.expand();
-  initData = telegramApp.initData || "";
+/*
+  Telegram normally exposes initData through Telegram.WebApp.initData.
+  The URL fallback only reads Telegram's signed launch parameter; the backend
+  still validates its signature. This does not trust initDataUnsafe or bypass auth.
+*/
+function readLaunchDataFromUrl() {
+  const sources = [];
+  if (window.location.search) sources.push(window.location.search.slice(1));
+  if (window.location.hash) sources.push(window.location.hash.slice(1));
+
+  for (const source of sources) {
+    const params = new URLSearchParams(source);
+    const value = params.get("tgWebAppData");
+    if (value) return value;
+  }
+  return "";
+}
+
+function refreshTelegramContext() {
+  telegramApp = window.Telegram && window.Telegram.WebApp
+    ? window.Telegram.WebApp
+    : null;
+
+  if (telegramApp) {
+    try {
+      telegramApp.ready();
+      telegramApp.expand();
+    } catch (error) {
+      console.warn("Telegram WebApp initialization warning:", error);
+    }
+  }
+
+  initData = telegramApp && typeof telegramApp.initData === "string"
+    ? telegramApp.initData.trim()
+    : "";
+
+  if (!initData) initData = readLaunchDataFromUrl();
+
+  return { telegramApp, initData };
+}
+
+function disableAccountActions() {
+  submitButton.disabled = true;
+  newButton.style.pointerEvents = "none";
+  newButton.style.opacity = "0.55";
+  adButton.disabled = true;
+  withdrawButton.disabled = true;
+  autoStartButton.disabled = true;
+  autoStopButton.disabled = true;
+}
+
+function enableAccountActions() {
+  newButton.style.pointerEvents = "auto";
+  newButton.style.opacity = "1";
+  adButton.disabled = false;
+  withdrawButton.disabled = false;
+  autoStartButton.disabled = false;
 }
 
 async function apiRequest(endpoint, data = {}) {
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...data, initData })
-  });
+  refreshTelegramContext();
+
+  if (!initData) {
+    throw new Error(
+      "Telegram launch data is missing. Close this page and reopen it using the Open Captcha Earn button in the bot chat."
+    );
+  }
+
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${endpoint}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...data, initData })
+    });
+  } catch (error) {
+    throw new Error(
+      "Could not reach the server. Please reopen the app and try again. If it continues, check the Render service."
+    );
+  }
 
   const result = await response.json().catch(() => ({}));
 
   if (!response.ok || result.ok !== true) {
     throw new Error(
-      result.error || result.message || "Something went wrong. Please try again."
+      result.error || result.message || `Server request failed (HTTP ${response.status}).`
     );
   }
 
@@ -253,27 +320,20 @@ function setBusy(value) {
 
 function clearCaptchaImage() {
   captchaImage.removeAttribute("src");
-
   if (captchaObjectUrl) {
     URL.revokeObjectURL(captchaObjectUrl);
     captchaObjectUrl = null;
   }
 }
 
-/* Display the SVG returned by bot.py in result.captcha_svg. */
 function showCaptchaImage(result) {
   const svg = result.captcha_svg;
-
   if (typeof svg !== "string" || !svg.trim()) {
     throw new Error("The server did not return a CAPTCHA image. Please try again.");
   }
 
   clearCaptchaImage();
-
-  const blob = new Blob([svg.trim()], {
-    type: "image/svg+xml;charset=utf-8"
-  });
-
+  const blob = new Blob([svg.trim()], { type: "image/svg+xml;charset=utf-8" });
   captchaObjectUrl = URL.createObjectURL(blob);
   captchaImage.src = captchaObjectUrl;
 }
@@ -285,25 +345,27 @@ async function refreshBalance() {
 }
 
 async function loadChallenge() {
+  refreshTelegramContext();
+  if (!initData) {
+    messageElement.textContent = "Telegram launch data is missing. Reopen this app from the bot's Open Captcha Earn button.";
+    disableAccountActions();
+    return;
+  }
   if (busy) return;
 
   setBusy(true);
   challengeId = null;
   submitButton.disabled = true;
-  messageElement.textContent = "";
+  messageElement.textContent = "Loading a new CAPTCHA...";
   answerInput.value = "";
   clearCaptchaImage();
 
   try {
     const result = await apiRequest("/api/challenge", {});
 
-    if (
-      result.challenge_id === undefined ||
-      result.challenge_id === null
-    ) {
+    if (result.challenge_id === undefined || result.challenge_id === null) {
       throw new Error("The server did not return a CAPTCHA challenge ID.");
     }
-
     if (typeof result.captcha_svg !== "string" || !result.captcha_svg.trim()) {
       throw new Error("The server did not return the CAPTCHA image. Please try again.");
     }
@@ -311,6 +373,7 @@ async function loadChallenge() {
     showCaptchaImage(result);
     challengeId = result.challenge_id;
     setBalance(result.balance);
+    messageElement.textContent = "Enter the 5 characters shown in the image.";
     submitButton.disabled = false;
   } catch (error) {
     clearCaptchaImage();
@@ -324,7 +387,6 @@ async function checkAnswer() {
   if (busy || !challengeId) return;
 
   const value = answerInput.value.trim().toUpperCase();
-
   if (value.length !== 5) {
     messageElement.textContent = "Please enter all 5 CAPTCHA characters.";
     return;
@@ -359,19 +421,15 @@ async function checkAnswer() {
   }
 }
 
-/*
-  Ads are only opened after a user action.
-  This frontend does not credit ad coins by itself.
-  Provider callback verification must be configured on the backend.
-*/
+/* Ad rewards are not credited by the frontend; backend verification is required. */
 async function watchAd() {
+  refreshTelegramContext();
   if (adBusy) return;
 
   if (!telegramApp || !initData) {
     adMessage.textContent = "Open this Mini App through your Telegram bot first.";
     return;
   }
-
   if (!window.Adsgram || typeof window.Adsgram.init !== "function") {
     adMessage.textContent = "The ad service did not load. Your CAPTCHA reward is safe.";
     return;
@@ -379,19 +437,12 @@ async function watchAd() {
 
   adBusy = true;
   adButton.disabled = true;
-
   try {
-    if (!adController) {
-      adController = window.Adsgram.init({ blockId: "53035" });
-    }
-
+    if (!adController) adController = window.Adsgram.init({ blockId: "53035" });
     await adController.show();
-
-    adMessage.textContent =
-      "The ad finished. Reward confirmation depends on the configured provider callback.";
+    adMessage.textContent = "The ad finished. Reward confirmation depends on the configured provider callback.";
   } catch (error) {
-    adMessage.textContent =
-      "No ad could be shown or the ad was not completed. Your CAPTCHA coin is safe.";
+    adMessage.textContent = "No ad could be shown or the ad was not completed. Your CAPTCHA coin is safe.";
   } finally {
     adBusy = false;
     adButton.disabled = false;
@@ -415,9 +466,9 @@ function updateWithdrawalEstimate() {
 
 async function submitWithdrawal(event) {
   event.preventDefault();
+  refreshTelegramContext();
 
   if (withdrawBusy) return;
-
   if (!telegramApp || !initData) {
     withdrawMessage.textContent = "Open this Mini App through your Telegram bot first.";
     return;
@@ -432,17 +483,14 @@ async function submitWithdrawal(event) {
     withdrawMessage.textContent = "Enter a valid whole number of coins.";
     return;
   }
-
   if (coins % 50 !== 0) {
     withdrawMessage.textContent = "The amount must be a multiple of 50 coins.";
     return;
   }
-
   if (coins > balance) {
     withdrawMessage.textContent = "You do not have enough coins for this withdrawal.";
     return;
   }
-
   if (!upi || /\s/.test(upi) || upi.length < 3 || upi.length > 200) {
     withdrawMessage.textContent = "Enter a valid UPI ID without spaces.";
     return;
@@ -452,7 +500,6 @@ async function submitWithdrawal(event) {
     "Request withdrawal of " + coins + " coins (₹" +
     (coins / 50).toFixed(2) + ") to UPI ID " + upi + "?"
   );
-
   if (!confirmed) return;
 
   withdrawBusy = true;
@@ -461,11 +508,9 @@ async function submitWithdrawal(event) {
 
   try {
     const result = await apiRequest("/api/withdraw", { coins, upi });
-
     withdrawMessage.textContent = "Request submitted. Request ID: " +
-      result.withdrawal_id + ". Amount: ₹" +
-      Number(result.amount_inr).toFixed(2) + ". Status: Pending.";
-
+      result.withdrawal_id + ". Amount: ₹" + Number(result.amount_inr).toFixed(2) +
+      ". Status: Pending.";
     withdrawCoins.value = "";
     upiInput.value = "";
     await refreshBalance();
@@ -478,14 +523,12 @@ async function submitWithdrawal(event) {
   }
 }
 
-/* Auto-Solve demo only: no earning API call and no coin reward. */
+/* Demo only: it never calls the earning API and never credits coins. */
 function makeDemoCaptcha() {
   let text = "";
-
   for (let i = 0; i < 5; i++) {
     text += demoChars[Math.floor(Math.random() * demoChars.length)];
   }
-
   return text;
 }
 
@@ -509,7 +552,6 @@ function stopAutoBot() {
 
 function runDemoCycle() {
   if (!autoBotRunning) return;
-
   autoDisplay.textContent = makeDemoCaptcha();
   autoCountdownValue = 10;
   autoCountdown.textContent = autoCountdownValue;
@@ -520,36 +562,28 @@ function runDemoCycle() {
       clearAutoTimer();
       return;
     }
-
     autoCountdownValue -= 1;
     autoCountdown.textContent = autoCountdownValue;
 
     if (autoCountdownValue <= 0) {
       clearAutoTimer();
-
       if (!autoBotRunning) return;
-
       autoStatus.textContent = "✅ Demo CAPTCHA completed. No coins were credited.";
-
       autoBotTimer = setTimeout(() => {
         autoBotTimer = null;
-
-        if (autoBotRunning) {
-          runDemoCycle();
-        }
+        if (autoBotRunning) runDemoCycle();
       }, 1500);
     }
   }, 1000);
 }
 
 autoStartButton.addEventListener("click", () => {
+  refreshTelegramContext();
   if (autoBotRunning) return;
-
   if (!telegramApp || !initData) {
     autoStatus.textContent = "Please open this Mini App through your Telegram bot.";
     return;
   }
-
   autoBotRunning = true;
   autoStartButton.disabled = true;
   autoStopButton.disabled = false;
@@ -557,52 +591,52 @@ autoStartButton.addEventListener("click", () => {
 });
 
 autoStopButton.addEventListener("click", stopAutoBot);
-
 submitButton.addEventListener("click", checkAnswer);
 newButton.addEventListener("click", loadChallenge);
-
 newButton.addEventListener("keydown", event => {
   if (event.key === "Enter" || event.key === " ") {
     event.preventDefault();
     loadChallenge();
   }
 });
-
 adButton.addEventListener("click", watchAd);
 withdrawForm.addEventListener("submit", submitWithdrawal);
 withdrawCoins.addEventListener("input", updateWithdrawalEstimate);
-
 answerInput.addEventListener("keydown", event => {
-  if (event.key === "Enter") {
-    checkAnswer();
-  }
+  if (event.key === "Enter") checkAnswer();
 });
 
 async function startApp() {
-  if (!telegramApp || !initData) {
-    welcome.textContent = "Please open this Mini App from your Telegram bot.";
-    messageElement.textContent = "Your Telegram account could not be verified.";
-    submitButton.disabled = true;
-    newButton.style.pointerEvents = "none";
-    adButton.disabled = true;
-    withdrawButton.disabled = true;
-    autoStartButton.disabled = true;
-    autoStopButton.disabled = true;
+  const context = refreshTelegramContext();
+
+  if (!context.telegramApp) {
+    welcome.textContent = "CHECK 1: Telegram was not detected.";
+    messageElement.textContent = "Close this page and reopen it using the Open Captcha Earn button in the private chat with @CaptchaEarnIndiaBot. Do not open the GitHub Pages URL directly in your browser.";
+    disableAccountActions();
     return;
   }
 
+  if (!context.initData) {
+    welcome.textContent = "CHECK 2: Telegram launch data is missing.";
+    messageElement.textContent = "The Telegram window opened, but no signed launch data was provided. Close the Mini App, send /start to @CaptchaEarnIndiaBot, and tap the newest Open Captcha Earn button. If this continues, we must check the Telegram Mini App URL settings; do not change your database.";
+    disableAccountActions();
+    return;
+  }
+
+  welcome.textContent = "Connecting securely to your account...";
+  messageElement.textContent = "";
   setBusy(true);
 
   try {
     const result = await apiRequest("/api/session", {});
     welcome.textContent = "Welcome, " + (result.name || "User") + "!";
     setBalance(result.balance);
+    enableAccountActions();
   } catch (error) {
-    welcome.textContent = "Could not connect to your account.";
+    welcome.textContent = "CHECK 3: Account connection or verification failed.";
     messageElement.textContent = error.message;
     setBusy(false);
-    withdrawButton.disabled = true;
-    autoStartButton.disabled = true;
+    disableAccountActions();
     return;
   }
 
@@ -610,6 +644,7 @@ async function startApp() {
   await loadChallenge();
 }
 
+updateWithdrawalEstimate();
 startApp();
 </script>
 </body>
