@@ -12,6 +12,7 @@ import html
 from urllib.parse import parse_qsl
 
 from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
 from supabase import create_client
 
 from telegram import (
@@ -57,6 +58,7 @@ challenges = {}
 challenge_lock = threading.Lock()
 
 app = Flask(__name__)
+CORS(app, resources={r"/api/*": {"origins": "https://himanshu02000.github.io"}})
 
 
 # =========================================================
