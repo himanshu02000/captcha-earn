@@ -31,7 +31,7 @@
     .captcha-title { display: flex; align-items: center; gap: 12px; }
     .shield { width: 46px; height: 46px; border-radius: 50%; background: #e5f0ff; display: grid; place-items: center; font-size: 23px; flex-shrink: 0; }
     .captcha-box { margin: 18px 0 12px; border: 2px solid #d4e0ee; border-radius: 15px; overflow: hidden; background: #f7fafc; }
-    #captcha-image { display: block; width: 100%; height: auto; min-height: 130px; }
+    #captcha-image { display: block; width: 100%; height: auto; min-height: 130px; object-fit: contain; }
     input { width: 100%; padding: 14px; border: 1px solid #cbd8e8; border-radius: 12px; background: white; color: #172b4d; font-size: 17px; outline: none; }
     input:focus { border-color: #287be5; box-shadow: 0 0 0 3px rgba(40,123,229,.12); }
     button { width: 100%; border: 0; border-radius: 12px; padding: 14px; margin-top: 11px; background: #287be5; color: white; font-size: 16px; font-weight: 700; cursor: pointer; }
@@ -173,6 +173,9 @@
 <script>
 "use strict";
 
+/* The frontend is on GitHub Pages; API requests must go to Render. */
+const API_BASE = "https://captcha-earning-bot.onrender.com";
+
 const telegramApp = window.Telegram?.WebApp;
 const welcome = document.getElementById("welcome");
 const balanceElement = document.getElementById("balance");
@@ -203,6 +206,7 @@ let busy = false;
 let adBusy = false;
 let withdrawBusy = false;
 let adController = null;
+let captchaObjectUrl = null;
 
 let autoBotRunning = false;
 let autoBotTimer = null;
@@ -217,7 +221,7 @@ if (telegramApp) {
 }
 
 async function apiRequest(endpoint, data = {}) {
-  const response = await fetch(endpoint, {
+  const response = await fetch(`${API_BASE}${endpoint}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...data, initData })
@@ -226,7 +230,9 @@ async function apiRequest(endpoint, data = {}) {
   const result = await response.json().catch(() => ({}));
 
   if (!response.ok || result.ok !== true) {
-    throw new Error(result.error || "Something went wrong. Please try again.");
+    throw new Error(
+      result.error || result.message || "Something went wrong. Please try again."
+    );
   }
 
   return result;
@@ -245,6 +251,33 @@ function setBusy(value) {
   newButton.style.opacity = value ? "0.55" : "1";
 }
 
+function clearCaptchaImage() {
+  captchaImage.removeAttribute("src");
+
+  if (captchaObjectUrl) {
+    URL.revokeObjectURL(captchaObjectUrl);
+    captchaObjectUrl = null;
+  }
+}
+
+/* Display the SVG returned by bot.py in result.captcha_svg. */
+function showCaptchaImage(result) {
+  const svg = result.captcha_svg;
+
+  if (typeof svg !== "string" || !svg.trim()) {
+    throw new Error("The server did not return a CAPTCHA image. Please try again.");
+  }
+
+  clearCaptchaImage();
+
+  const blob = new Blob([svg.trim()], {
+    type: "image/svg+xml;charset=utf-8"
+  });
+
+  captchaObjectUrl = URL.createObjectURL(blob);
+  captchaImage.src = captchaObjectUrl;
+}
+
 async function refreshBalance() {
   const result = await apiRequest("/api/session", {});
   setBalance(result.balance);
@@ -259,16 +292,28 @@ async function loadChallenge() {
   submitButton.disabled = true;
   messageElement.textContent = "";
   answerInput.value = "";
-  captchaImage.removeAttribute("src");
+  clearCaptchaImage();
 
   try {
     const result = await apiRequest("/api/challenge", {});
+
+    if (
+      result.challenge_id === undefined ||
+      result.challenge_id === null
+    ) {
+      throw new Error("The server did not return a CAPTCHA challenge ID.");
+    }
+
+    if (typeof result.captcha_svg !== "string" || !result.captcha_svg.trim()) {
+      throw new Error("The server did not return the CAPTCHA image. Please try again.");
+    }
+
+    showCaptchaImage(result);
     challengeId = result.challenge_id;
-    captchaImage.src = "data:image/svg+xml;charset=utf-8," +
-      encodeURIComponent(result.captcha_svg);
     setBalance(result.balance);
     submitButton.disabled = false;
   } catch (error) {
+    clearCaptchaImage();
     messageElement.textContent = error.message;
   } finally {
     setBusy(false);
@@ -299,7 +344,7 @@ async function checkAnswer() {
     messageElement.textContent = result.message || "CAPTCHA completed.";
     shouldShowAd = result.correct === true;
     challengeId = null;
-    captchaImage.removeAttribute("src");
+    clearCaptchaImage();
     answerInput.value = "";
     submitButton.disabled = true;
   } catch (error) {
@@ -518,6 +563,7 @@ newButton.addEventListener("click", loadChallenge);
 
 newButton.addEventListener("keydown", event => {
   if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
     loadChallenge();
   }
 });
