@@ -60,6 +60,7 @@ app = Flask(__name__)
 def verify_telegram_init_data(init_data):
 
     if not init_data or not isinstance(init_data, str):
+        print("[AUTH] Init data empty or not a string")
         return None
 
     try:
@@ -73,12 +74,15 @@ def verify_telegram_init_data(init_data):
         received_hash = parsed.pop("hash", None)
 
         if not received_hash:
+            print("[AUTH] No hash in init data")
             return None
 
         data_check_string = "\n".join(
             f"{key}={value}"
             for key, value in sorted(parsed.items())
         )
+
+        print(f"[AUTH] Data check string: {data_check_string[:100]}...")
 
         secret_key = hmac.new(
             b"WebAppData",
@@ -92,10 +96,14 @@ def verify_telegram_init_data(init_data):
             hashlib.sha256
         ).hexdigest()
 
+        print(f"[AUTH] Received hash:   {received_hash}")
+        print(f"[AUTH] Calculated hash: {calculated_hash}")
+
         if not hmac.compare_digest(
             calculated_hash,
             received_hash
         ):
+            print("[AUTH] Hash mismatch!")
             return None
 
         auth_date = int(
@@ -109,6 +117,7 @@ def verify_telegram_init_data(init_data):
             or now - auth_date > 86400
             or auth_date > now + 60
         ):
+            print(f"[AUTH] Date validation failed: auth_date={auth_date}, now={now}")
             return None
 
         user_data = json.loads(
@@ -119,15 +128,18 @@ def verify_telegram_init_data(init_data):
             not isinstance(user_data, dict)
             or not user_data.get("id")
         ):
+            print("[AUTH] User data missing or invalid")
             return None
 
+        print(f"[AUTH] Authentication successful for user {user_data.get('id')}")
         return user_data
 
     except (
         ValueError,
         TypeError,
         json.JSONDecodeError
-    ):
+    ) as exc:
+        print(f"[AUTH] Exception during verification: {repr(exc)}")
         return None
 
 
@@ -142,11 +154,14 @@ def authenticated_user():
         ""
     )
 
+    print(f"[AUTH] Received request with initData length: {len(init_data)}")
+
     user_data = verify_telegram_init_data(
         init_data
     )
 
     if not user_data:
+        print("[AUTH] Authentication failed")
         return None, None
 
     return (
@@ -1034,4 +1049,19 @@ def request_withdrawal():
             in error_text
         ):
 
-  
+            return jsonify({
+                "ok": False,
+                "error":
+                    "User account not found."
+            }), 400
+
+        return jsonify({
+            "ok": False,
+            "error":
+                "Withdrawal request failed. "
+                "Please check your details and try again."
+        }), 500
+
+
+if __name__ == "__main__":
+    app.run(debug=False)
