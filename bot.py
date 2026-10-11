@@ -577,6 +577,17 @@ def mini_app_challenge():
     challenge_id = secrets.token_urlsafe(24)
 
     with challenge_lock:
+        # Drop expired challenges so the in-memory store
+        # does not grow without bound.
+        now = time.time()
+        expired = [
+            cid for cid, entry in challenges.items()
+            if entry.get("expires", 0) <= now
+        ]
+
+        for cid in expired:
+            challenges.pop(cid, None)
+
         challenges[challenge_id] = {
             "telegram_id": telegram_id,
             "answer": captcha_text,
@@ -740,6 +751,100 @@ def mini_app_ad_reward():
     return jsonify({
         "ok": True,
         "message": "🎬 Ad reward: 1 coin earned.",
+        "balance": balance
+    })
+
+
+# =========================================================
+# AUTO-BOT SOLVE (bot auto-solves a real challenge)
+# =========================================================
+
+auto_solve_lock = threading.Lock()
+last_auto_solve_at = {}
+
+
+@app.route("/api/auto-solve", methods=["POST"])
+def mini_app_auto_solve():
+
+    user_data, telegram_id = authenticated_user()
+
+    if not user_data:
+        return jsonify({
+            "ok": False,
+            "error": "Telegram authentication failed."
+        }), 401
+
+    body = request.get_json(silent=True) or {}
+
+    challenge_id = body.get("challenge_id")
+
+    if not isinstance(challenge_id, str):
+        return jsonify({
+            "ok": False,
+            "error": "Invalid challenge."
+        }), 400
+
+    now = time.time()
+
+    # Lock ordering is fixed (auto_solve_lock -> challenge_lock)
+    # so this cannot deadlock with /api/answer.
+    with auto_solve_lock:
+
+        last = last_auto_solve_at.get(telegram_id, 0)
+
+        if now - last < 12:
+            return jsonify({
+                "ok": False,
+                "error":
+                    "Auto-bot is solving too fast. "
+                    "Please wait a few seconds."
+            }), 429
+
+        with challenge_lock:
+
+            challenge = challenges.get(challenge_id)
+
+            if (
+                not challenge
+                or challenge["telegram_id"] != telegram_id
+            ):
+                return jsonify({
+                    "ok": False,
+                    "error":
+                        "Challenge not found. "
+                        "Start a new auto-bot cycle."
+                }), 400
+
+            if time.time() > challenge["expires"]:
+
+                challenges.pop(challenge_id, None)
+
+                return jsonify({
+                    "ok": False,
+                    "error":
+                        "CAPTCHA expired. "
+                        "Start a new auto-bot cycle."
+                }), 400
+
+            # The bot solves the challenge on the server side:
+            # consume it so it cannot be solved twice.
+            challenges.pop(challenge_id, None)
+
+        last_auto_solve_at[telegram_id] = now
+
+    balance = add_one_coin(telegram_id)
+
+    if balance is None:
+        return jsonify({
+            "ok": False,
+            "error":
+                "Could not save your reward. "
+                "Please check your balance."
+        }), 500
+
+    return jsonify({
+        "ok": True,
+        "message": "🤖 Auto-solved! 1 coin earned.",
         "balance": balance
     })
 
