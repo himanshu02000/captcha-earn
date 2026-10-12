@@ -455,8 +455,8 @@ async def help_command(
         "2. Solve CAPTCHAs to earn coins\n"
         "3. Watch ads for extra rewards\n"
         "4. Request withdrawal when eligible\n\n"
-        "Minimum withdrawal: 1,000 coins (first 5 requests), "
-        "then 2,500 coins"
+        "Minimum withdrawal: 500 coins on your first withdrawal, "
+        "then 1,000 coins."
     )
 
     if update.message:
@@ -970,9 +970,8 @@ def request_withdrawal():
                 "ok": False,
                 "error":
                     "Your minimum withdrawal is "
-                    "1,000 coins for your first "
-                    "five eligible requests, then "
-                    "2,500 coins."
+                    "500 coins for your first "
+                    "withdrawal, then 1,000 coins."
             }), 400
 
         if "Insufficient balance" in error_text:
