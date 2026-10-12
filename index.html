@@ -466,12 +466,14 @@ async function checkAnswer() {
   }
 
   if (shouldShowAd) {
-    adMessage.textContent = "You may watch an ad for a separate reward.";
-    await watchAd();
+    adMessage.textContent = "Showing a short ad — your coin lands when it finishes.";
+    await watchAd({ claimSolve: true });
   }
 }
 
-async function watchAd() {
+async function watchAd(options) {
+  const claimSolve = !!(options && options.claimSolve);
+
   if (demoMode) {
     adMessage.textContent = "Demo mode: ad watching is disabled because the app is not opened from Telegram.";
     return;
@@ -485,7 +487,9 @@ async function watchAd() {
   }
 
   if (!window.Adsgram || typeof window.Adsgram.init !== "function") {
-    adMessage.textContent = "The ad service did not load. Your CAPTCHA reward is safe.";
+    adMessage.textContent = claimSolve
+      ? "The ad service did not load, so your coin stays waiting for the next ad."
+      : "The ad service did not load, so no bonus coin was added.";
     return;
   }
 
@@ -497,25 +501,45 @@ async function watchAd() {
       adController = window.Adsgram.init({ blockId: "53035" });
     }
 
-    const adResult = await adController.show();
+    // Safety timeout: if the ad never settles, the button must not
+    // stay stuck. Adsgram resolves show() with {done: true} only when
+    // the rewarded ad was watched to completion; it rejects on skip,
+    // no-fill, rendering errors and anti-fraud rejection.
+    const adResult = await Promise.race([
+      adController.show(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("ad-timeout")), 90000)
+      )
+    ]);
 
-    // Adsgram resolves show() with {done: true} only when the
-    // rewarded ad was watched to completion. It rejects on
-    // skip, no-fill, rendering errors and anti-fraud rejection,
-    // so a coin is credited only for a genuinely finished ad.
     if (adResult && adResult.done === true) {
-      try {
-        const reward = await apiRequest("/api/ad-reward", {});
-        setBalance(reward.balance);
-        adMessage.textContent = "🎬 Ad completed! 1 bonus coin added to your balance.";
-      } catch (rewardError) {
-        adMessage.textContent = "Ad completed, but the reward could not be saved: " + rewardError.message;
+      if (claimSolve) {
+        try {
+          const claim = await apiRequest("/api/claim-solve", {});
+          setBalance(claim.balance);
+          adMessage.textContent = "🎬 Ad completed! +1 coin added to your balance.";
+          messageElement.textContent = "✅ Correct! +1 coin earned.";
+        } catch (claimError) {
+          adMessage.textContent = "Ad completed, but the coin could not be saved: " + claimError.message;
+        }
+      } else {
+        try {
+          const reward = await apiRequest("/api/ad-reward", {});
+          setBalance(reward.balance);
+          adMessage.textContent = "🎬 Ad completed! 1 bonus coin added to your balance.";
+        } catch (rewardError) {
+          adMessage.textContent = "Ad completed, but the reward could not be saved: " + rewardError.message;
+        }
       }
     } else {
-      adMessage.textContent = "The ad was not completed, so no bonus coin was added. Your CAPTCHA coin is safe.";
+      adMessage.textContent = claimSolve
+        ? "No ad played, so no coin this time. Your correct answer is kept — the coin will release with your next completed ad."
+        : "The ad was not completed, so no bonus coin was added.";
     }
   } catch (error) {
-    adMessage.textContent = "No ad could be shown or the ad was not completed. Your CAPTCHA coin is safe.";
+    adMessage.textContent = claimSolve
+      ? "No ad could be shown, so no coin this time. Your correct answer is kept — the coin will release with your next completed ad."
+      : "No ad could be shown or the ad was not completed, so no bonus coin was added.";
   } finally {
     adBusy = false;
     adButton.disabled = false;
