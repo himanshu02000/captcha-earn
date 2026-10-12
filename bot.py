@@ -609,6 +609,13 @@ def mini_app_challenge():
 # CAPTCHA ANSWER
 # =========================================================
 
+# Coins earned by manual CAPTCHA solves are held here until the
+# rewarded ad shown after the solve completes. Every credited
+# manual-solve coin is therefore backed by a shown ad.
+pending_lock = threading.Lock()
+pending_solve_coins = {}
+
+
 @app.route("/api/answer", methods=["POST"])
 def mini_app_answer():
 
@@ -683,9 +690,65 @@ def mini_app_answer():
         # Consume CAPTCHA before awarding the reward.
         challenges.pop(challenge_id, None)
 
+    # Hold the coin as pending: it is only credited when the
+    # rewarded ad shown after this solve completes.
+    with pending_lock:
+        pending = pending_solve_coins.get(telegram_id, 0) + 1
+        pending_solve_coins[telegram_id] = pending
+
+    user = get_user(telegram_id)
+    balance = (user.get("balance", 0) or 0) if user else 0
+
+    return jsonify({
+        "ok": True,
+        "correct": True,
+        "pending": pending,
+        "message":
+            "✅ Correct! Your coin is waiting — "
+            "it lands when the ad finishes.",
+        "balance": balance
+    })
+
+
+# =========================================================
+# CLAIM SOLVE COIN (releases one pending manual-solve coin)
+# =========================================================
+
+
+@app.route("/api/claim-solve", methods=["POST"])
+def mini_app_claim_solve():
+
+    user_data, telegram_id = authenticated_user()
+
+    if not user_data:
+        return jsonify({
+            "ok": False,
+            "error": "Telegram authentication failed."
+        }), 401
+
+    with pending_lock:
+
+        pending = pending_solve_coins.get(telegram_id, 0)
+
+        if pending <= 0:
+            return jsonify({
+                "ok": False,
+                "error":
+                    "No pending coin to claim. "
+                    "Solve a CAPTCHA first."
+            }), 400
+
+        pending_solve_coins[telegram_id] = pending - 1
+
     balance = add_one_coin(telegram_id)
 
     if balance is None:
+
+        # Refund the pending coin if the credit failed.
+        with pending_lock:
+            pending_solve_coins[telegram_id] = \
+                pending_solve_coins.get(telegram_id, 0) + 1
+
         return jsonify({
             "ok": False,
             "error":
@@ -695,8 +758,8 @@ def mini_app_answer():
 
     return jsonify({
         "ok": True,
-        "correct": True,
-        "message": "✅ Correct! 1 coin earned.",
+        "message": "🎬 Ad completed! +1 coin earned.",
+        "pending": pending - 1,
         "balance": balance
     })
 
