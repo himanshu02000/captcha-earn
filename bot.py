@@ -9,6 +9,7 @@ import secrets
 import threading
 import random
 import html
+from datetime import date, datetime, timedelta, timezone
 from urllib.parse import parse_qsl
 
 from flask import Flask, request, jsonify, send_from_directory
@@ -909,6 +910,409 @@ def mini_app_auto_solve():
         "ok": True,
         "message": "🤖 Auto-solved! 1 coin earned.",
         "balance": balance
+    })
+
+
+# =========================================================
+# DAILY CHECK-IN BONUS
+# A full 15-minute auto-bot session unlocks one claim per day.
+# Rewards: day 1 = 5 coins, day 2 = 7 coins, ... (2 * day + 3).
+# A 14-day streak pays 252 coins; missing a day restarts it.
+# =========================================================
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+CHECKIN_MAX_DAYS = 14
+
+# A session only counts if it ran at least this long. 15 minutes
+# with a 30-second tolerance for clock drift.
+AUTO_SESSION_REQUIRED_SECONDS = 14 * 60 + 30
+
+checkin_lock = threading.Lock()
+
+
+def india_today():
+
+    return datetime.now(IST).date()
+
+
+def add_coins(telegram_id, amount):
+
+    user = get_user(telegram_id)
+
+    if user is None:
+        return None
+
+    try:
+        old_balance = float(user.get("balance", 0) or 0)
+        new_balance = old_balance + amount
+
+        result = (
+            supabase
+            .table("users")
+            .update({"balance": new_balance})
+            .eq("telegram_id", telegram_id)
+            .select("telegram_id, balance")
+            .execute()
+        )
+
+        if not result.data:
+            return None
+
+        return result.data[0].get("balance", new_balance)
+
+    except Exception as exc:
+        print("BALANCE UPDATE ERROR:", repr(exc), flush=True)
+        return None
+
+
+def get_latest_checkin(telegram_id):
+
+    try:
+        result = (
+            supabase
+            .table("checkins")
+            .select("*")
+            .eq("user_id", telegram_id)
+            .order("claim_date", desc=True)
+            .limit(1)
+            .execute()
+        )
+
+        return result.data[0] if result.data else None
+
+    except Exception as exc:
+        print("CHECKIN READ ERROR:", repr(exc), flush=True)
+        return None
+
+
+def session_completed_on(telegram_id, day):
+
+    try:
+        day_start = datetime.combine(
+            day,
+            datetime.min.time()
+        ).replace(tzinfo=IST)
+
+        rows = (
+            supabase
+            .table("auto_sessions")
+            .select("id")
+            .eq("user_id", telegram_id)
+            .gte("completed_at", day_start.isoformat())
+            .execute()
+        ).data or []
+
+        return len(rows) > 0
+
+    except Exception as exc:
+        print("SESSION CHECK ERROR:", repr(exc), flush=True)
+        return False
+
+
+def checkin_reward(day_number):
+
+    # Day 1 = 5, Day 2 = 7, Day 3 = 9, ...
+    return 2 * day_number + 3
+
+
+def checkin_state(telegram_id):
+
+    today = india_today()
+    yesterday = today - timedelta(days=1)
+
+    latest = get_latest_checkin(telegram_id)
+
+    claimed_today = False
+    show_congrats = False
+    streak_day = 0
+    next_day = 1
+
+    if latest:
+
+        try:
+            claim_date = date.fromisoformat(
+                str(latest.get("claim_date"))
+            )
+            claimed_day = int(latest.get("day_number", 0))
+        except (TypeError, ValueError):
+            claim_date = None
+            claimed_day = 0
+
+        if claim_date == today:
+            claimed_today = True
+            streak_day = claimed_day
+            next_day = claimed_day
+            show_congrats = claimed_day >= CHECKIN_MAX_DAYS
+
+        elif claim_date == yesterday:
+
+            if claimed_day >= CHECKIN_MAX_DAYS:
+                # Run finished yesterday: keep the congrats message
+                # until a fresh run starts.
+                show_congrats = True
+                next_day = 1
+            else:
+                streak_day = claimed_day
+                next_day = claimed_day + 1
+
+    return {
+        "claimed_today": claimed_today,
+        "streak_day": streak_day,
+        "next_day": next_day,
+        "next_reward": checkin_reward(next_day),
+        "session_completed_today": session_completed_on(
+            telegram_id,
+            today
+        ),
+        "show_congrats": show_congrats,
+        "max_days": CHECKIN_MAX_DAYS
+    }
+
+
+@app.route("/api/autobot/start", methods=["POST"])
+def autobot_start_session():
+
+    user_data, telegram_id = authenticated_user()
+
+    if not user_data:
+        return jsonify({
+            "ok": False,
+            "error": "Telegram authentication failed."
+        }), 401
+
+    try:
+        result = (
+            supabase
+            .table("auto_sessions")
+            .insert({"user_id": telegram_id})
+            .execute()
+        )
+
+        if not result.data:
+            raise ValueError("No session row created")
+
+        session_id = result.data[0].get("id")
+
+    except Exception as exc:
+        print("AUTOBOT START ERROR:", repr(exc), flush=True)
+
+        return jsonify({
+            "ok": False,
+            "error":
+                "Could not start a tracked session. "
+                "Try again."
+        }), 500
+
+    return jsonify({
+        "ok": True,
+        "session_id": session_id
+    })
+
+
+@app.route("/api/autobot/complete", methods=["POST"])
+def autobot_complete_session():
+
+    user_data, telegram_id = authenticated_user()
+
+    if not user_data:
+        return jsonify({
+            "ok": False,
+            "error": "Telegram authentication failed."
+        }), 401
+
+    body = request.get_json(silent=True) or {}
+    session_id = body.get("session_id")
+
+    if not isinstance(session_id, str) or not session_id:
+        return jsonify({
+            "ok": False,
+            "error": "Invalid session."
+        }), 400
+
+    try:
+        result = (
+            supabase
+            .table("auto_sessions")
+            .select("*")
+            .eq("id", session_id)
+            .eq("user_id", telegram_id)
+            .limit(1)
+            .execute()
+        )
+
+        row = result.data[0] if result.data else None
+
+    except Exception as exc:
+        print("AUTOBOT COMPLETE READ ERROR:", repr(exc), flush=True)
+        row = None
+
+    if not row:
+        return jsonify({
+            "ok": False,
+            "error": "Session not found."
+        }), 400
+
+    if row.get("completed_at"):
+        return jsonify({
+            "ok": False,
+            "error": "Session already completed."
+        }), 400
+
+    try:
+        started_at = datetime.fromisoformat(
+            str(row["started_at"])
+        )
+
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=timezone.utc)
+
+    except (TypeError, ValueError):
+        return jsonify({
+            "ok": False,
+            "error": "Session time is invalid."
+        }), 400
+
+    elapsed = (
+        datetime.now(timezone.utc) - started_at
+    ).total_seconds()
+
+    if elapsed < AUTO_SESSION_REQUIRED_SECONDS:
+        return jsonify({
+            "ok": False,
+            "error":
+                "Only full 15-minute sessions count. "
+                "Stopping early does not qualify."
+        }), 400
+
+    try:
+        (
+            supabase
+            .table("auto_sessions")
+            .update({
+                "completed_at": datetime.now(
+                    timezone.utc
+                ).isoformat()
+            })
+            .eq("id", session_id)
+            .eq("user_id", telegram_id)
+            .execute()
+        )
+
+    except Exception as exc:
+        print("AUTOBOT COMPLETE ERROR:", repr(exc), flush=True)
+
+        return jsonify({
+            "ok": False,
+            "error":
+                "Could not record the session. "
+                "Try again."
+        }), 500
+
+    return jsonify({
+        "ok": True,
+        "message":
+            "Session complete. You can claim "
+            "your daily check-in bonus."
+    })
+
+
+@app.route("/api/checkin/status", methods=["POST"])
+def checkin_status():
+
+    user_data, telegram_id = authenticated_user()
+
+    if not user_data:
+        return jsonify({
+            "ok": False,
+            "error": "Telegram authentication failed."
+        }), 401
+
+    state = checkin_state(telegram_id)
+    state["ok"] = True
+
+    return jsonify(state)
+
+
+@app.route("/api/checkin/claim", methods=["POST"])
+def checkin_claim():
+
+    user_data, telegram_id = authenticated_user()
+
+    if not user_data:
+        return jsonify({
+            "ok": False,
+            "error": "Telegram authentication failed."
+        }), 401
+
+    with checkin_lock:
+
+        state = checkin_state(telegram_id)
+
+        if not state["session_completed_today"]:
+            return jsonify({
+                "ok": False,
+                "error":
+                    "Finish one full 15-minute auto-bot session "
+                    "first, then claim your bonus."
+            }), 400
+
+        if state["claimed_today"]:
+            return jsonify({
+                "ok": False,
+                "error":
+                    "Already claimed today. "
+                    "Come back tomorrow."
+            }), 400
+
+        day_number = state["next_day"]
+        coins = checkin_reward(day_number)
+        today = india_today().isoformat()
+
+        balance = add_coins(telegram_id, coins)
+
+        if balance is None:
+            return jsonify({
+                "ok": False,
+                "error":
+                    "Could not save your reward. "
+                    "Please check your balance."
+            }), 500
+
+        try:
+            (
+                supabase
+                .table("checkins")
+                .insert({
+                    "user_id": telegram_id,
+                    "day_number": day_number,
+                    "claim_date": today,
+                    "coins": coins
+                })
+                .execute()
+            )
+
+        except Exception as exc:
+            print("CHECKIN CLAIM ERROR:", repr(exc), flush=True)
+
+            return jsonify({
+                "ok": False,
+                "error":
+                    "Already claimed today. "
+                    "Come back tomorrow."
+            }), 400
+
+    return jsonify({
+        "ok": True,
+        "day_number": day_number,
+        "coins": coins,
+        "balance": balance,
+        "congrats": day_number >= CHECKIN_MAX_DAYS,
+        "message":
+            "Day {} claimed: +{} coins!".format(
+                day_number,
+                coins
+            )
     })
 
 
