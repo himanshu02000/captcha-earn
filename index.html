@@ -148,6 +148,18 @@
     <p id="ad-message" role="status" aria-live="polite"></p>
   </section>
 
+  <section class="card" id="checkin-card">
+    <h2>📅 Daily Check-in</h2>
+    <p class="muted">
+      Finish one full 15-minute auto-bot session today, then claim your
+      daily bonus. Day 1 = 5 coins, Day 2 = 7 coins, growing every day up
+      to Day 14 = 31 coins. Miss a day and the streak restarts.
+    </p>
+    <p id="checkin-streak" class="muted">Loading your streak...</p>
+    <button id="checkin-button" type="button">📅 Claim Daily Bonus</button>
+    <p id="checkin-message" role="status" aria-live="polite"></p>
+  </section>
+
   <section class="card">
     <h2>💸 Withdraw</h2>
     <p class="muted">Minimum withdrawal starts from 500 coins.</p>
@@ -207,6 +219,9 @@ const autoStatus = document.getElementById("auto-bot-status");
 const autoCountdown = document.getElementById("auto-countdown");
 const autoStartButton = document.getElementById("auto-start-button");
 const autoStopButton = document.getElementById("auto-stop-button");
+const checkinStreakEl = document.getElementById("checkin-streak");
+const checkinButton = document.getElementById("checkin-button");
+const checkinMessageEl = document.getElementById("checkin-message");
 
 let initData = "";
 let challengeId = null;
@@ -217,6 +232,8 @@ let withdrawBusy = false;
 let adController = null;
 let demoBalance = 0;
 let demoMode = false;
+let checkinBusy = false;
+let checkinSessionId = null;
 
 const AUTO_SESSION_SECONDS = 15 * 60;
 const AUTO_SOLVE_SECONDS = 10;
@@ -640,6 +657,73 @@ function formatClock(totalSeconds) {
   return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
 }
 
+// ---------- Daily Check-in ----------
+async function refreshCheckin() {
+  if (demoMode) {
+    checkinStreakEl.textContent = "Demo mode: streak tracking is off outside Telegram.";
+    checkinButton.disabled = true;
+    return;
+  }
+
+  try {
+    const status = await apiRequest("/api/checkin/status", {});
+
+    if (status.show_congrats) {
+      checkinStreakEl.textContent = "🔥 14-day streak complete!";
+      checkinMessageEl.textContent = "Congrats, you have claimed all your daily check-in bonus.";
+      checkinButton.disabled = true;
+      return;
+    }
+
+    if (status.claimed_today) {
+      checkinStreakEl.textContent = "✅ Day " + status.streak_day + " of 14 claimed. Come back tomorrow!";
+      checkinMessageEl.textContent = "";
+      checkinButton.disabled = true;
+      return;
+    }
+
+    if (status.streak_day > 0) {
+      checkinStreakEl.textContent = "🔥 Streak: Day " + status.streak_day +
+        " of 14. Today's bonus: " + status.next_reward + " coins.";
+    } else {
+      checkinStreakEl.textContent = "No streak yet. Start today: Day 1 = " +
+        status.next_reward + " coins.";
+    }
+
+    if (status.session_completed_today) {
+      checkinMessageEl.textContent = "Session done! Tap Claim to collect Day " + status.next_day + ".";
+    } else {
+      checkinMessageEl.textContent = "Finish one full 15-minute auto-bot session to unlock today's claim.";
+    }
+
+    checkinButton.disabled = false;
+  } catch (error) {
+    checkinStreakEl.textContent = "Could not load your streak. Pull down to refresh the app.";
+    checkinButton.disabled = true;
+  }
+}
+
+async function claimCheckin() {
+  if (checkinBusy) return;
+
+  checkinBusy = true;
+  checkinButton.disabled = true;
+  checkinMessageEl.textContent = "Claiming your bonus...";
+
+  try {
+    const result = await apiRequest("/api/checkin/claim", {});
+    setBalance(result.balance);
+    checkinMessageEl.textContent = "🎉 " + result.message;
+  } catch (error) {
+    checkinMessageEl.textContent = error.message;
+    checkinButton.disabled = false;
+  } finally {
+    checkinBusy = false;
+  }
+
+  refreshCheckin();
+}
+
 function autoSessionExpired() {
   return Date.now() >= autoSessionEndsAt;
 }
@@ -813,6 +897,17 @@ function startAutoBot() {
   autoSessionClock = setInterval(updateAutoSessionClock, 1000);
   adButton.disabled = true;
   autoStatus.textContent = "🚀 Auto-bot session started! 15 minutes on the clock.";
+
+  // Register this session for the daily check-in bonus. Best effort:
+  // the session works even if this call fails.
+  checkinSessionId = null;
+
+  apiRequest("/api/autobot/start", {})
+    .then(result => {
+      checkinSessionId = result.session_id || null;
+    })
+    .catch(() => {});
+
   runAutoBotLoop(token);
 }
 
@@ -846,6 +941,20 @@ function finishAutoSession() {
 
   autoSessionTimerEl.textContent = "00:00";
   autoCaptchaImage.removeAttribute("src");
+
+  // The full 15 minutes ran, so this session qualifies for the
+  // daily check-in bonus. Record it server-side, then refresh
+  // the check-in card.
+  const sessionId = checkinSessionId;
+  checkinSessionId = null;
+
+  if (sessionId && !demoMode) {
+    apiRequest("/api/autobot/complete", { session_id: sessionId })
+      .then(() => refreshCheckin())
+      .catch(() => refreshCheckin());
+  } else {
+    refreshCheckin();
+  }
 }
 
 autoStartButton.addEventListener("click", startAutoBot);
@@ -861,6 +970,7 @@ newButton.addEventListener("keydown", event => {
 });
 
 adButton.addEventListener("click", watchAd);
+checkinButton.addEventListener("click", claimCheckin);
 withdrawForm.addEventListener("submit", submitWithdrawal);
 withdrawCoins.addEventListener("input", updateWithdrawalEstimate);
 
@@ -883,6 +993,7 @@ async function startApp() {
     autoStartButton.disabled = false;
     autoStopButton.disabled = true;
     await loadChallenge();
+    refreshCheckin();
     return;
   }
 
@@ -905,6 +1016,7 @@ async function startApp() {
 
   setBusy(false);
   await loadChallenge();
+  refreshCheckin();
 }
 
 startApp();
