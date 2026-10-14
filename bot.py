@@ -235,7 +235,7 @@ def create_user(update):
 
     return ensure_user(
         telegram_user.id,
-        telegram_user.username
+        telegram_user.username or telegram_user.first_name
     )
 
 
@@ -389,7 +389,7 @@ async def start_command(
 
     user = ensure_user(
         telegram_user.id,
-        telegram_user.username
+        telegram_user.username or telegram_user.first_name
     )
 
     if user is None:
@@ -532,7 +532,7 @@ def mini_app_session():
 
     user = ensure_user(
         telegram_id,
-        user_data.get("username")
+        user_data.get("username") or user_data.get("first_name")
     )
 
     if user is None:
@@ -565,7 +565,7 @@ def mini_app_challenge():
 
     user = ensure_user(
         telegram_id,
-        user_data.get("username")
+        user_data.get("username") or user_data.get("first_name")
     )
 
     if user is None:
