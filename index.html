@@ -193,7 +193,7 @@
 // FIX: Send API requests to the public Render backend.
 const API_BASE = "https://captcha-earning-bot.onrender.com";
 
-const telegramApp = window.Telegram?.WebApp;
+let telegramApp = window.Telegram?.WebApp;
 const welcome = document.getElementById("welcome");
 const balanceElement = document.getElementById("balance");
 const topBalanceElement = document.getElementById("top-balance");
@@ -245,10 +245,29 @@ let autoSessionCoins = 0;
 
 const demoChars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
+function initTelegramApp(tg) {
+  tg.ready();
+  tg.expand();
+  initData = tg.initData || "";
+}
+
+// Telegram's script can load slowly on poor networks. Wait a few
+// seconds for it before deciding this is not a real Mini App session.
+function waitForTelegramApp(timeoutMs) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const timer = setInterval(() => {
+      const tg = window.Telegram?.WebApp;
+      if (tg || Date.now() - start >= timeoutMs) {
+        clearInterval(timer);
+        resolve(tg || null);
+      }
+    }, 250);
+  });
+}
+
 if (telegramApp) {
-  telegramApp.ready();
-  telegramApp.expand();
-  initData = telegramApp.initData || "";
+  initTelegramApp(telegramApp);
 }
 
 demoMode = !telegramApp || !initData;
@@ -971,9 +990,18 @@ answerInput.addEventListener("keydown", event => {
 });
 
 async function startApp() {
-  if (!telegramApp || !initData) {
-    demoMode = true;
-    welcome.textContent = "Demo mode: opened outside Telegram. This lets you test the UI.";
+  if (!telegramApp) {
+    welcome.textContent = "Connecting to Telegram…";
+    telegramApp = await waitForTelegramApp(8000);
+    if (telegramApp) {
+      initTelegramApp(telegramApp);
+    }
+  }
+  demoMode = !telegramApp || !initData;
+  if (demoMode) {
+    welcome.textContent = !telegramApp
+      ? "Couldn't reach Telegram. Check your internet connection, then close and reopen the app from the bot."
+      : "Demo mode: opened outside Telegram. This lets you test the UI.";
     autoModeLabel.textContent = "DEMO MODE — NO COINS EARNED";
     autoModeLabel.className = "demo-label";
     setBalance(0);
