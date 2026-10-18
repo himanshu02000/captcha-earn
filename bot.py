@@ -1329,6 +1329,134 @@ def checkin_claim():
 
 
 # =========================================================
+# DAILY SURPRISE API — watch one ad, win 1-5 coins, once/day
+# =========================================================
+
+surprise_lock = threading.Lock()
+
+SURPRISE_MIN_COINS = 1
+SURPRISE_MAX_COINS = 5
+
+
+def surprise_state(telegram_id):
+
+    today = india_today().isoformat()
+
+    try:
+        result = (
+            supabase
+            .table("daily_surprises")
+            .select("id")
+            .eq("user_id", telegram_id)
+            .eq("claim_date", today)
+            .limit(1)
+            .execute()
+        )
+
+        claimed = bool(result.data)
+
+    except Exception as exc:
+        print("SURPRISE STATE ERROR:", repr(exc), flush=True)
+
+        return {"setup_ok": False, "claimed_today": False}
+
+    return {"setup_ok": True, "claimed_today": claimed}
+
+
+@app.route("/api/surprise/status", methods=["POST"])
+def surprise_status():
+
+    user_data, telegram_id = authenticated_user()
+
+    if not user_data:
+        return jsonify({
+            "ok": False,
+            "error": "Telegram authentication failed."
+        }), 401
+
+    state = surprise_state(telegram_id)
+    state["ok"] = True
+    state["can_claim"] = state["setup_ok"] and not state["claimed_today"]
+
+    return jsonify(state)
+
+
+@app.route("/api/surprise/claim", methods=["POST"])
+def surprise_claim():
+
+    user_data, telegram_id = authenticated_user()
+
+    if not user_data:
+        return jsonify({
+            "ok": False,
+            "error": "Telegram authentication failed."
+        }), 401
+
+    with surprise_lock:
+
+        state = surprise_state(telegram_id)
+
+        if not state["setup_ok"]:
+            return jsonify({
+                "ok": False,
+                "error":
+                    "The surprise box is being set up. "
+                    "Try again in a bit."
+            }), 503
+
+        if state["claimed_today"]:
+            return jsonify({
+                "ok": False,
+                "error":
+                    "Already opened today. "
+                    "Come back tomorrow!"
+            }), 400
+
+        coins = random.randint(SURPRISE_MIN_COINS, SURPRISE_MAX_COINS)
+        today = india_today().isoformat()
+
+        try:
+            (
+                supabase
+                .table("daily_surprises")
+                .insert({
+                    "user_id": telegram_id,
+                    "claim_date": today,
+                    "coins": coins
+                })
+                .execute()
+            )
+
+        except Exception as exc:
+            print("SURPRISE CLAIM ERROR:", repr(exc), flush=True)
+
+            return jsonify({
+                "ok": False,
+                "error":
+                    "Already opened today. "
+                    "Come back tomorrow!"
+            }), 400
+
+        balance = add_coins(telegram_id, coins)
+
+        if balance is None:
+            return jsonify({
+                "ok": False,
+                "error":
+                    "Could not save your surprise. "
+                    "Please check your balance."
+            }), 500
+
+    return jsonify({
+        "ok": True,
+        "coins": coins,
+        "balance": balance,
+        "message":
+            "You won {} coins!".format(coins)
+    })
+
+
+# =========================================================
 # WITHDRAWAL API
 # =========================================================
 

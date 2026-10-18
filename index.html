@@ -97,6 +97,12 @@
     <p id="checkin-message" role="status" aria-live="polite"></p>
   </section>
 
+  <section class="card" id="surprise-card">
+    <h2>🎁 Daily Surprise</h2>
+    <button id="surprise-button" type="button">🎁 Open Today's Surprise</button>
+    <p id="surprise-message" role="status" aria-live="polite"></p>
+  </section>
+
   <div class="fairplay-strip" role="note">
     <div>⚠️</div>
     <div><strong>Work fair.</strong> Cheating or fake activity to earn coins will get your account banned and your withdrawals rejected. Please earn the genuine way.</div>
@@ -224,6 +230,8 @@ const autoStartButton = document.getElementById("auto-start-button");
 const autoStopButton = document.getElementById("auto-stop-button");
 const checkinButton = document.getElementById("checkin-button");
 const checkinMessageEl = document.getElementById("checkin-message");
+const surpriseButton = document.getElementById("surprise-button");
+const surpriseMessageEl = document.getElementById("surprise-message");
 
 let initData = "";
 let challengeId = null;
@@ -235,6 +243,7 @@ let adController = null;
 let demoBalance = 0;
 let demoMode = false;
 let checkinBusy = false;
+let surpriseBusy = false;
 let checkinSessionId = null;
 
 const AUTO_SESSION_SECONDS = 15 * 60;
@@ -736,6 +745,82 @@ async function claimCheckin() {
   refreshCheckin();
 }
 
+// ---------- Daily Surprise ----------
+async function refreshSurprise() {
+  if (demoMode) {
+    surpriseMessageEl.textContent = "Demo mode: surprise is off outside Telegram.";
+    surpriseButton.disabled = true;
+    return;
+  }
+
+  try {
+    const status = await apiRequest("/api/surprise/status", {});
+
+    if (!status.setup_ok) {
+      surpriseMessageEl.textContent = "🎁 The surprise box is being set up. Check back soon!";
+      surpriseButton.disabled = true;
+      return;
+    }
+
+    if (status.claimed_today) {
+      surpriseMessageEl.textContent = "✅ Surprise opened! Come back tomorrow for another.";
+      surpriseButton.disabled = true;
+      return;
+    }
+
+    surpriseMessageEl.textContent = "Just open 1 ad and stay for a few seconds to get your surprise coins!";
+    surpriseButton.disabled = false;
+  } catch (error) {
+    surpriseMessageEl.textContent = "Could not load the surprise. Pull down to refresh the app.";
+    surpriseButton.disabled = true;
+  }
+}
+
+async function openSurprise() {
+  if (surpriseBusy || adBusy) return;
+
+  surpriseBusy = true;
+  adBusy = true;
+  surpriseButton.disabled = true;
+  surpriseMessageEl.textContent = "📺 Showing a short ad... watch it to the end!";
+
+  try {
+    if (!window.Adsgram || typeof window.Adsgram.init !== "function") {
+      surpriseMessageEl.textContent = "The ad service did not load. Try again in a bit.";
+      return;
+    }
+
+    if (!adController) {
+      adController = window.Adsgram.init({ blockId: "53035" });
+    }
+
+    // The ad must be watched to completion: Adsgram resolves show()
+    // with {done: true} only then; it rejects on skip or no-fill.
+    // The server credits the surprise only after this point.
+    const adResult = await Promise.race([
+      adController.show(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("ad-timeout")), 90000)
+      )
+    ]);
+
+    if (!(adResult && adResult.done === true)) {
+      surpriseMessageEl.textContent = "Ad was not finished — no surprise this time. Try again!";
+      return;
+    }
+
+    const result = await apiRequest("/api/surprise/claim", {});
+    setBalance(result.balance);
+    surpriseMessageEl.textContent = "🎉 Surprise! You won " + result.coins + " free coins!";
+  } catch (error) {
+    surpriseMessageEl.textContent = error.message || "Something went wrong. Try again!";
+  } finally {
+    surpriseBusy = false;
+    adBusy = false;
+    refreshSurprise();
+  }
+}
+
 function autoSessionExpired() {
   return Date.now() >= autoSessionEndsAt;
 }
@@ -966,6 +1051,7 @@ function finishAutoSession() {
       .catch(() => refreshCheckin());
   } else {
     refreshCheckin();
+    refreshSurprise();
   }
 }
 
@@ -983,6 +1069,7 @@ newButton.addEventListener("keydown", event => {
 
 adButton.addEventListener("click", watchAd);
 checkinButton.addEventListener("click", claimCheckin);
+surpriseButton.addEventListener("click", openSurprise);
 withdrawForm.addEventListener("submit", submitWithdrawal);
 withdrawCoins.addEventListener("input", updateWithdrawalEstimate);
 
@@ -1015,6 +1102,7 @@ async function startApp() {
     autoStopButton.disabled = true;
     await loadChallenge();
     refreshCheckin();
+    refreshSurprise();
     return;
   }
 
