@@ -1329,130 +1329,61 @@ def checkin_claim():
 
 
 # =========================================================
-# DAILY SURPRISE API — watch one ad, win 1-5 coins, once/day
+# WITHDRAWAL PROGRESS API — balance vs unlock threshold
 # =========================================================
 
-surprise_lock = threading.Lock()
-
-SURPRISE_MIN_COINS = 1
-SURPRISE_MAX_COINS = 5
+WITHDRAW_FIRST_THRESHOLD = 500
+WITHDRAW_LATER_THRESHOLD = 1000
 
 
-def surprise_state(telegram_id):
+def withdrawal_threshold(telegram_id):
+    """500 coins for the first withdrawal, 1,000 for later ones."""
 
-    today = india_today().isoformat()
-
-    try:
-        result = (
-            supabase
-            .table("daily_surprises")
-            .select("id")
-            .eq("user_id", telegram_id)
-            .eq("claim_date", today)
-            .limit(1)
-            .execute()
-        )
-
-        claimed = bool(result.data)
-
-    except Exception as exc:
-        print("SURPRISE STATE ERROR:", repr(exc), flush=True)
-
-        return {"setup_ok": False, "claimed_today": False}
-
-    return {"setup_ok": True, "claimed_today": claimed}
-
-
-@app.route("/api/surprise/status", methods=["POST"])
-def surprise_status():
-
-    user_data, telegram_id = authenticated_user()
-
-    if not user_data:
-        return jsonify({
-            "ok": False,
-            "error": "Telegram authentication failed."
-        }), 401
-
-    state = surprise_state(telegram_id)
-    state["ok"] = True
-    state["can_claim"] = state["setup_ok"] and not state["claimed_today"]
-
-    return jsonify(state)
-
-
-@app.route("/api/surprise/claim", methods=["POST"])
-def surprise_claim():
-
-    user_data, telegram_id = authenticated_user()
-
-    if not user_data:
-        return jsonify({
-            "ok": False,
-            "error": "Telegram authentication failed."
-        }), 401
-
-    with surprise_lock:
-
-        state = surprise_state(telegram_id)
-
-        if not state["setup_ok"]:
-            return jsonify({
-                "ok": False,
-                "error":
-                    "The surprise box is being set up. "
-                    "Try again in a bit."
-            }), 503
-
-        if state["claimed_today"]:
-            return jsonify({
-                "ok": False,
-                "error":
-                    "Already opened today. "
-                    "Come back tomorrow!"
-            }), 400
-
-        coins = random.randint(SURPRISE_MIN_COINS, SURPRISE_MAX_COINS)
-        today = india_today().isoformat()
-
+    for column in ("telegram_id", "user_id"):
         try:
-            (
+            result = (
                 supabase
-                .table("daily_surprises")
-                .insert({
-                    "user_id": telegram_id,
-                    "claim_date": today,
-                    "coins": coins
-                })
+                .table("withdrawals")
+                .select("id")
+                .eq(column, telegram_id)
+                .limit(1)
                 .execute()
             )
 
-        except Exception as exc:
-            print("SURPRISE CLAIM ERROR:", repr(exc), flush=True)
+            if result.data:
+                return WITHDRAW_LATER_THRESHOLD
 
-            return jsonify({
-                "ok": False,
-                "error":
-                    "Already opened today. "
-                    "Come back tomorrow!"
-            }), 400
+            return WITHDRAW_FIRST_THRESHOLD
 
-        balance = add_coins(telegram_id, coins)
+        except Exception:
+            continue
 
-        if balance is None:
-            return jsonify({
-                "ok": False,
-                "error":
-                    "Could not save your surprise. "
-                    "Please check your balance."
-            }), 500
+    return WITHDRAW_FIRST_THRESHOLD
+
+
+@app.route("/api/withdraw/progress", methods=["POST"])
+def withdraw_progress():
+
+    user_data, telegram_id = authenticated_user()
+
+    if not user_data:
+        return jsonify({
+            "ok": False,
+            "error": "Telegram authentication failed."
+        }), 401
+
+    user = get_user(telegram_id)
+    balance = int(float((user or {}).get("balance", 0) or 0))
+    threshold = withdrawal_threshold(telegram_id)
+    percent = min(100, int(balance * 100 / threshold)) if threshold else 0
 
     return jsonify({
         "ok": True,
-        "coins": coins,
         "balance": balance,
-        "message":
-            "You won {} coins!".format(coins)
+        "threshold": threshold,
+        "percent": percent,
+        "remaining": max(0, threshold - balance),
+        "unlocked": balance >= threshold
     })
 
 
