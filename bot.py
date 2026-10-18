@@ -507,6 +507,18 @@ def home():
     )
 
 
+@app.route("/telegram-web-app.js")
+def telegram_webapp_js():
+    # Self-hosted Telegram WebApp bridge: the app loads this locally instead
+    # of https://telegram.org/js/telegram-web-app.js, so it works on networks
+    # that block telegram.org.
+    return send_from_directory(
+        BASE_DIR,
+        "telegram-web-app.js",
+        mimetype="application/javascript"
+    )
+
+
 @app.route("/health")
 def health():
 
