@@ -1602,25 +1602,21 @@ async def main():
 
 
 # =========================================================
-# IDLE REMINDER ("you stopped earning") — 1 nudge/day
+# DAILY REMINDER — every user, once a day (owner rule, Oct 22)
 # =========================================================
-# A background thread scans auto_sessions every 4 hours. A user whose last
-# auto-solver session ended >= 4h ago gets one Telegram message:
-# max 1 per 24h, max 3 per idle streak (then silence until they return),
-# users who blocked the bot are skipped forever. State lives in the
+# A background thread scans every 4 hours and messages EVERY registered
+# user who has not been reminded in the last 24 hours — whether or not
+# they ever ran the auto-bot. Max 1 message per user per 24h; users who
+# blocked the bot are skipped forever. State lives in the
 # `idle_reminders` Supabase table (durable across restarts/sleeps).
-# First scan after deploy notifies every currently-idle user (launch wave).
+# First scan after deploy messages everyone once (launch wave).
 
 IDLE_REMINDER_MESSAGE = (
-    "\u23f8\ufe0f Your auto-solver stopped a few hours ago \u2014 "
-    "you're not earning right now. "
+    "\u23f8\ufe0f You're not earning right now. "
     "Open the app and tap Start Bot to keep earning."
 )
-IDLE_HOURS = 4
 IDLE_COOLDOWN_HOURS = 24
-IDLE_MAX_PER_STREAK = 3
 IDLE_SCAN_EVERY_SECS = 4 * 3600
-IDLE_SESSION_MINUTES = 15
 
 
 def _idle_send(chat_id, text):
@@ -1665,31 +1661,28 @@ def _idle_parse_ts(raw):
 
 def idle_reminder_scan():
     now = datetime.now(timezone.utc)
-    idle_cutoff = now - timedelta(hours=IDLE_HOURS)
     cool_cutoff = now - timedelta(hours=IDLE_COOLDOWN_HOURS)
     try:
-        rows = supabase.table("auto_sessions") \
-            .select("user_id,started_at,completed_at") \
-            .order("started_at", desc=True).limit(100000).execute().data or []
+        rows = supabase.table("users") \
+            .select("telegram_id") \
+            .limit(100000).execute().data or []
     except Exception as exc:
-        print("idle scan: sessions read failed:", exc, flush=True)
+        print("daily reminder: users read failed:", exc, flush=True)
         return
-    latest = {}
+    user_ids = []
     for row in rows:
         try:
-            uid = int(row.get("user_id"))
+            user_ids.append(int(row.get("telegram_id")))
         except (TypeError, ValueError):
             continue
-        if uid not in latest:
-            latest[uid] = row
     try:
         state_rows = supabase.table("idle_reminders") \
-            .select("user_id,last_reminded_at,streak_count,blocked") \
+            .select("user_id,last_reminded_at,blocked") \
             .execute().data or []
     except Exception as exc:
         # Table not created yet (owner runs idle_reminders.sql once) — skip
         # quietly until then; the scan activates on the next cycle.
-        print("idle scan: state table unavailable:", exc, flush=True)
+        print("daily reminder: state table unavailable:", exc, flush=True)
         return
     state = {}
     for row in state_rows:
@@ -1698,28 +1691,12 @@ def idle_reminder_scan():
         except (TypeError, ValueError, KeyError):
             continue
     sent = 0
-    for uid, row in latest.items():
-        started = _idle_parse_ts(row.get("started_at"))
-        if not started:
-            continue
-        ended = _idle_parse_ts(row.get("completed_at")) \
-            or (started + timedelta(minutes=IDLE_SESSION_MINUTES))
+    for uid in user_ids:
         st = state.get(uid) or {}
-        if ended > idle_cutoff:
-            if st.get("streak_count"):
-                try:
-                    supabase.table("idle_reminders") \
-                        .update({"streak_count": 0}) \
-                        .eq("user_id", uid).execute()
-                except Exception:
-                    pass
-            continue
         if st.get("blocked"):
             continue
-        if _idle_parse_ts(st.get("last_reminded_at")) \
-                and _idle_parse_ts(st.get("last_reminded_at")) > cool_cutoff:
-            continue
-        if int(st.get("streak_count") or 0) >= IDLE_MAX_PER_STREAK:
+        last = _idle_parse_ts(st.get("last_reminded_at"))
+        if last and last > cool_cutoff:
             continue
         ok, blocked = _idle_send(uid, IDLE_REMINDER_MESSAGE)
         try:
@@ -1731,14 +1708,14 @@ def idle_reminder_scan():
                 supabase.table("idle_reminders").upsert(
                     {"user_id": uid,
                      "last_reminded_at": now.isoformat(),
-                     "streak_count": int(st.get("streak_count") or 0) + 1,
+                     "streak_count": 0,
                      "blocked": False},
                     on_conflict="user_id").execute()
                 sent += 1
         except Exception as exc:
-            print("idle scan: state write failed:", exc, flush=True)
-    print("idle scan done: %d users checked, %d reminded"
-          % (len(latest), sent), flush=True)
+            print("daily reminder: state write failed:", exc, flush=True)
+    print("daily reminder done: %d users checked, %d reminded"
+          % (len(user_ids), sent), flush=True)
 
 
 def idle_reminder_loop():
