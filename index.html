@@ -137,19 +137,19 @@
     <span id="auto-mode-label" class="live-label">LIVE — EARNS REAL COINS</span>
     <p class="muted">
       Tap Start Bot and the bot solves CAPTCHAs for you in a
-      <strong>15-minute session</strong>. Each cycle: watch a short ad,
+      <strong>25-minute session</strong>. Each cycle: watch a short ad,
       then the bot auto-solves the CAPTCHA in 10 seconds and you earn
       <strong>+1 coin</strong>.
     </p>
     <div class="session-strip">
-      <div>⏱ Session left: <strong id="auto-session-timer">15:00</strong></div>
+      <div>⏱ Session left: <strong id="auto-session-timer">25:00</strong></div>
       <div>🪙 Earned: <strong id="auto-session-coins">0</strong></div>
     </div>
     <div class="captcha-box">
       <img id="auto-captcha-image" alt="Auto-bot CAPTCHA challenge">
     </div>
     <p id="auto-bot-status" class="muted" role="status" aria-live="polite">
-      Tap Start Bot to begin a 15-minute earning session.
+      Tap Start Bot to begin a 25-minute earning session.
     </p>
     <div class="countdown"><span id="auto-countdown">10</span>s</div>
     <button id="auto-start-button" type="button">▶ Start Bot</button>
@@ -245,7 +245,7 @@ let checkinBusy = false;
 let withdrawThreshold = null;
 let checkinSessionId = null;
 
-const AUTO_SESSION_SECONDS = 15 * 60;
+const AUTO_SESSION_SECONDS = 25 * 60;
 const AUTO_SOLVE_SECONDS = 10;
 
 let autoBotRunning = false;
@@ -749,7 +749,7 @@ async function refreshCheckin() {
       checkinMessageEl.textContent = "Session done! Tap Claim to collect Day " + status.next_day +
         " (" + status.next_reward + " coins).";
     } else {
-      checkinMessageEl.textContent = "Finish one full 15-minute auto-bot session to unlock today's claim.";
+      checkinMessageEl.textContent = "Finish one full 25-minute auto-bot session to unlock today's claim.";
     }
 
     checkinButton.disabled = false;
@@ -952,7 +952,7 @@ function startAutoBot() {
   updateAutoSessionClock();
   autoSessionClock = setInterval(updateAutoSessionClock, 1000);
   adButton.disabled = true;
-  autoStatus.textContent = "🚀 Auto-bot session started! 15 minutes on the clock.";
+  autoStatus.textContent = "🚀 Auto-bot session started! 25 minutes on the clock.";
 
   // Register this session for the daily check-in bonus. Best effort:
   // the session works even if this call fails.
@@ -991,14 +991,14 @@ function finishAutoSession() {
   const coinWord = earned === 1 ? "coin" : "coins";
 
   stopAutoBot(
-    "🏁 15-minute session complete! You earned " + earned + " " + coinWord +
+    "🏁 25-minute session complete! You earned " + earned + " " + coinWord +
     " this session. Tap Start Bot to run another session."
   );
 
   autoSessionTimerEl.textContent = "00:00";
   autoCaptchaImage.removeAttribute("src");
 
-  // The full 15 minutes ran, so this session qualifies for the
+  // The full 25 minutes ran, so this session qualifies for the
   // daily check-in bonus. Record it server-side, then refresh
   // the check-in card.
   const sessionId = checkinSessionId;

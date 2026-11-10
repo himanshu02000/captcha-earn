@@ -927,7 +927,7 @@ def mini_app_auto_solve():
 
 # =========================================================
 # DAILY CHECK-IN BONUS
-# A full 15-minute auto-bot session unlocks one claim per day.
+# A full 25-minute auto-bot session unlocks one claim per day.
 # Rewards: day 1 = 5 coins, day 2 = 7 coins, ... (2 * day + 3).
 # A 14-day streak pays 252 coins; missing a day restarts it.
 # =========================================================
@@ -936,9 +936,9 @@ IST = timezone(timedelta(hours=5, minutes=30))
 
 CHECKIN_MAX_DAYS = 14
 
-# A session only counts if it ran at least this long. 15 minutes
+# A session only counts if it ran at least this long. 25 minutes
 # with a 30-second tolerance for clock drift.
-AUTO_SESSION_REQUIRED_SECONDS = 14 * 60 + 30
+AUTO_SESSION_REQUIRED_SECONDS = 24 * 60 + 30
 
 checkin_lock = threading.Lock()
 
@@ -1193,7 +1193,7 @@ def autobot_complete_session():
         return jsonify({
             "ok": False,
             "error":
-                "Only full 15-minute sessions count. "
+                "Only full 25-minute sessions count. "
                 "Stopping early does not qualify."
         }), 400
 
@@ -1265,7 +1265,7 @@ def checkin_claim():
             return jsonify({
                 "ok": False,
                 "error":
-                    "Finish one full 15-minute auto-bot session "
+                    "Finish one full 25-minute auto-bot session "
                     "first, then claim your bonus."
             }), 400
 
