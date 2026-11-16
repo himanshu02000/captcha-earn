@@ -1718,9 +1718,106 @@ def idle_reminder_scan():
           % (len(user_ids), sent), flush=True)
 
 
+# =========================================================
+# STOPPED-EARNING ALERT — 3 hours after the auto-bot stops
+# (owner pick, Nov 16)
+# =========================================================
+# Same 4-hour scan cycle as the daily reminder. Only users who
+# actually ran the auto-bot: if their latest session ended 3+ hours
+# ago and no new session started since, send one alert. Max 1 per
+# user per 24h, sharing the `idle_reminders.last_reminded_at`
+# cooldown with the daily reminder, so nobody ever gets both
+# messages on the same day. Blocked users are skipped forever.
+# A session that was never completed counts as ended 25 minutes
+# after it started (the user closed the app mid-session).
+
+STOPPED_ALERT_AFTER_HOURS = 3
+STOPPED_EARNING_MESSAGE = (
+    "\u23f8\ufe0f Your auto-bot stopped \u2014 you're not earning "
+    "right now. Open the app and tap Start Bot to start earning again."
+)
+
+
+def stopped_earning_scan():
+    now = datetime.now(timezone.utc)
+    stop_cutoff = now - timedelta(hours=STOPPED_ALERT_AFTER_HOURS)
+    cool_cutoff = now - timedelta(hours=IDLE_COOLDOWN_HOURS)
+    try:
+        rows = supabase.table("auto_sessions") \
+            .select("user_id,started_at,completed_at") \
+            .limit(5000).execute().data or []
+    except Exception as exc:
+        print("stopped alert: sessions read failed:", exc, flush=True)
+        return
+    # Latest session end per user: completed_at, else started_at + 25 min.
+    last_end = {}
+    for row in rows:
+        try:
+            uid = int(row.get("user_id"))
+        except (TypeError, ValueError):
+            continue
+        started = _idle_parse_ts(row.get("started_at"))
+        if not started:
+            continue
+        completed = _idle_parse_ts(row.get("completed_at"))
+        end = completed or (started + timedelta(minutes=25))
+        if uid not in last_end or end > last_end[uid]:
+            last_end[uid] = end
+    if not last_end:
+        print("stopped alert done: no sessions yet", flush=True)
+        return
+    try:
+        state_rows = supabase.table("idle_reminders") \
+            .select("user_id,last_reminded_at,blocked") \
+            .execute().data or []
+    except Exception as exc:
+        print("stopped alert: state table unavailable:", exc, flush=True)
+        return
+    state = {}
+    for row in state_rows:
+        try:
+            state[int(row["user_id"])] = row
+        except (TypeError, ValueError, KeyError):
+            continue
+    stopped = 0
+    sent = 0
+    for uid, end in last_end.items():
+        if end > stop_cutoff:
+            continue  # stopped less than 3 hours ago
+        stopped += 1
+        st = state.get(uid) or {}
+        if st.get("blocked"):
+            continue
+        last = _idle_parse_ts(st.get("last_reminded_at"))
+        if last and last > cool_cutoff:
+            continue  # already reminded in the last 24h
+        ok, blocked = _idle_send(uid, STOPPED_EARNING_MESSAGE)
+        try:
+            if blocked:
+                supabase.table("idle_reminders").upsert(
+                    {"user_id": uid, "blocked": True},
+                    on_conflict="user_id").execute()
+            elif ok:
+                supabase.table("idle_reminders").upsert(
+                    {"user_id": uid,
+                     "last_reminded_at": now.isoformat(),
+                     "streak_count": 0,
+                     "blocked": False},
+                    on_conflict="user_id").execute()
+                sent += 1
+        except Exception as exc:
+            print("stopped alert: state write failed:", exc, flush=True)
+    print("stopped alert done: %d users stopped 3h+, %d alerted"
+          % (stopped, sent), flush=True)
+
+
 def idle_reminder_loop():
     time.sleep(5 * 60)  # let boot finish; first scan ~5 min after start
     while True:
+        try:
+            stopped_earning_scan()  # targeted alert first, shares 24h cooldown
+        except Exception as exc:
+            print("stopped alert error:", exc, flush=True)
         try:
             idle_reminder_scan()
         except Exception as exc:
