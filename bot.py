@@ -456,8 +456,8 @@ async def help_command(
         "2. Solve CAPTCHAs to earn coins\n"
         "3. Watch ads for extra rewards\n"
         "4. Request withdrawal when eligible\n\n"
-        "Minimum withdrawal: 500 coins on your first withdrawal, "
-        "then 1,000 coins."
+        "Minimum withdrawal: 100 coins ($0.02) on your first withdrawal, "
+        "then 500 coins ($0.10), then 1,000 coins ($0.20)."
     )
 
     if update.message:
@@ -523,6 +523,126 @@ def telegram_webapp_js():
 def health():
 
     return jsonify({"status": "ok"}), 200
+
+
+# =========================================================
+# LOOTABLY SURVEYS — offerwall postback (Nov 16)
+# =========================================================
+# Lootably sends a GET here when a user completes a survey/offer.
+# Docs: https://documentation.lootably.com/docs/postbacks
+# Verify: sha256(userID + ip + revenue + currencyReward + secret).
+# Credit currencyReward coins via add_coins(). Dedupe on
+# transactionID (Lootably retries on any non-"1" reply). Return
+# body "1" ONLY after a successful credit (or a known duplicate);
+# anything else makes Lootably retry. Chargeback (status "0"):
+# reverse a previously credited reward. Secret lives in the
+# LOOTABLY_POSTBACK_SECRET Render env var — fail closed if unset.
+# Table: lootably_conversions (run lootably_conversions.sql once).
+
+LOOTABLY_POSTBACK_SECRET = os.environ.get("LOOTABLY_POSTBACK_SECRET", "")
+
+
+@app.route("/api/lootably/postback", methods=["GET"])
+def lootably_postback():
+    user_id = request.args.get("userID", "")
+    txn_id = request.args.get("transactionID", "")
+    ip = request.args.get("ip", "")
+    revenue = request.args.get("revenue", "")
+    reward = request.args.get("currencyReward", "")
+    status = request.args.get("status", "1")
+    recv_hash = request.args.get("hash", "")
+    offer_name = request.args.get("offerName", "")
+    offer_id = request.args.get("offerID", "")
+    if not LOOTABLY_POSTBACK_SECRET:
+        print("lootably: postback secret not set", flush=True)
+        return "postback secret not configured", 500
+    if not user_id or not txn_id or not reward:
+        return "missing parameters", 400
+    expect = hashlib.sha256(
+        (user_id + ip + revenue + reward
+         + LOOTABLY_POSTBACK_SECRET).encode("utf-8")
+    ).hexdigest()
+    if not hmac.compare_digest(expect, recv_hash or ""):
+        print("lootably: bad hash for txn %s" % txn_id, flush=True)
+        return "invalid hash", 403
+    try:
+        telegram_id = int(user_id)
+        reward_coins = round(float(reward), 2)
+    except (TypeError, ValueError):
+        return "invalid user or reward", 400
+    try:
+        existing = (
+            supabase.table("lootably_conversions")
+            .select("*")
+            .eq("transaction_id", txn_id)
+            .limit(1)
+            .execute().data or []
+        )
+    except Exception as exc:
+        print("LOOTABLY READ ERROR:", repr(exc), flush=True)
+        return "database error", 500
+    if existing:
+        row = existing[0]
+        if status == "0" and row.get("credited"):
+            # Chargeback: take the reward back.
+            add_coins(telegram_id, -float(row.get("reward_coins") or 0))
+            try:
+                (supabase.table("lootably_conversions")
+                 .update({"credited": False, "status": "0"})
+                 .eq("transaction_id", txn_id).execute())
+            except Exception as exc:
+                print("LOOTABLY REVERSAL ERROR:", repr(exc), flush=True)
+        return "1", 200
+    if status != "1":
+        # Chargeback for a conversion we never recorded: nothing to do.
+        return "1", 200
+    if get_user(telegram_id) is None:
+        return "unknown user", 400
+    try:
+        revenue_usd = float(revenue) if revenue else None
+    except (TypeError, ValueError):
+        revenue_usd = None
+    try:
+        (supabase.table("lootably_conversions")
+         .insert({
+             "transaction_id": txn_id,
+             "user_id": telegram_id,
+             "offer_name": offer_name or None,
+             "offer_id": offer_id or None,
+             "revenue_usd": revenue_usd,
+             "reward_coins": reward_coins,
+             "status": "1",
+             "credited": False,
+         }).execute())
+    except Exception as exc:
+        # Likely a concurrent duplicate — re-read before giving up.
+        print("LOOTABLY INSERT ERROR:", repr(exc), flush=True)
+        try:
+            again = (
+                supabase.table("lootably_conversions")
+                .select("*")
+                .eq("transaction_id", txn_id)
+                .limit(1)
+                .execute().data or []
+            )
+        except Exception:
+            again = []
+        if again:
+            return "1", 200
+        return "database error", 500
+    new_balance = add_coins(telegram_id, reward_coins)
+    if new_balance is None:
+        return "credit failed", 500
+    try:
+        (supabase.table("lootably_conversions")
+         .update({"credited": True})
+         .eq("transaction_id", txn_id).execute())
+    except Exception as exc:
+        print("LOOTABLY MARK ERROR:", repr(exc), flush=True)
+        return "database error", 500
+    print("lootably: credited %s coins to %s for txn %s"
+          % (reward_coins, telegram_id, txn_id), flush=True)
+    return "1", 200
 
 
 # =========================================================
@@ -1332,12 +1452,14 @@ def checkin_claim():
 # WITHDRAWAL PROGRESS API — balance vs unlock threshold
 # =========================================================
 
+WITHDRAW_FAST_TRACK_THRESHOLD = 100
 WITHDRAW_FIRST_THRESHOLD = 500
 WITHDRAW_LATER_THRESHOLD = 1000
 
 
 def withdrawal_threshold(telegram_id):
-    """500 coins for the first withdrawal, 1,000 for later ones."""
+    """100 coins for the first withdrawal, 500 for the second,
+    1,000 for the third and later ones."""
 
     for column in ("telegram_id", "user_id"):
         try:
@@ -1346,19 +1468,23 @@ def withdrawal_threshold(telegram_id):
                 .table("withdrawals")
                 .select("id")
                 .eq(column, telegram_id)
-                .limit(1)
                 .execute()
             )
 
-            if result.data:
-                return WITHDRAW_LATER_THRESHOLD
+            count = len(result.data or [])
 
-            return WITHDRAW_FIRST_THRESHOLD
+            if count == 0:
+                return WITHDRAW_FAST_TRACK_THRESHOLD
+
+            if count == 1:
+                return WITHDRAW_FIRST_THRESHOLD
+
+            return WITHDRAW_LATER_THRESHOLD
 
         except Exception:
             continue
 
-    return WITHDRAW_FIRST_THRESHOLD
+    return WITHDRAW_FAST_TRACK_THRESHOLD
 
 
 @app.route("/api/withdraw/progress", methods=["POST"])
@@ -1508,8 +1634,9 @@ def request_withdrawal():
                 "ok": False,
                 "error":
                     "Your minimum withdrawal is "
-                    "500 coins for your first "
-                    "withdrawal, then 1,000 coins."
+                    "100 coins ($0.02) for your first "
+                    "withdrawal, then 500 coins ($0.10), "
+                    "then 1,000 coins ($0.20)."
             }), 400
 
         if "Insufficient balance" in error_text:

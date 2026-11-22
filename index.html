@@ -170,11 +170,11 @@
     <h2>💸 Withdraw</h2>
     <div class="progress-track"><div class="progress-fill" id="withdraw-progress-fill"></div></div>
     <p id="withdraw-progress-text" role="status" aria-live="polite"></p>
-    <p class="muted">Minimum withdrawal starts from 500 coins.</p>
+    <p class="muted" id="withdraw-minimum-text">🎉 First payout from just 100 coins — $0.02!</p>
     <form id="withdraw-form">
       <label for="withdraw-coins">Coins to withdraw</label>
       <input id="withdraw-coins" type="number" inputmode="numeric"
-        min="500" step="50" placeholder="Enter coins, e.g. 500" required>
+        min="100" step="50" placeholder="Enter coins, e.g. 100" required>
       <label for="upi-id">Your UPI ID</label>
       <input id="upi-id" type="text" maxlength="200"
         placeholder="e.g. name@bank" autocomplete="off" required>
@@ -231,6 +231,7 @@ const checkinButton = document.getElementById("checkin-button");
 const checkinMessageEl = document.getElementById("checkin-message");
 const withdrawProgressFill = document.getElementById("withdraw-progress-fill");
 const withdrawProgressText = document.getElementById("withdraw-progress-text");
+const withdrawMinimumText = document.getElementById("withdraw-minimum-text");
 
 let initData = "";
 let challengeId = null;
@@ -247,6 +248,10 @@ let checkinSessionId = null;
 
 const AUTO_SESSION_SECONDS = 25 * 60;
 const AUTO_SOLVE_SECONDS = 10;
+
+// Display only: 50 coins = $0.01, so 5,000 coins = $1.
+// Payouts still settle in rupees over UPI.
+const COINS_PER_USD = 5000;
 
 let autoBotRunning = false;
 let autoRunToken = 0;
@@ -384,7 +389,21 @@ function updateWithdrawProgress(balance) {
   } else {
     const remaining = withdrawThreshold - safeBalance;
     withdrawProgressText.textContent = safeBalance + " / " + withdrawThreshold +
-      " coins — " + remaining + " more to unlock withdrawal 🚀";
+      " coins ($" + (withdrawThreshold / COINS_PER_USD).toFixed(2) +
+      ") — " + remaining + " more to unlock withdrawal 🚀";
+  }
+
+  // Keep the form and the minimum text in step with the live threshold:
+  // 100 coins for a first payout, then 500, then 1,000.
+  withdrawCoins.min = String(withdrawThreshold);
+  withdrawCoins.placeholder = "Enter coins, e.g. " + withdrawThreshold;
+
+  if (withdrawThreshold <= 100) {
+    withdrawMinimumText.textContent = "🎉 First payout from just 100 coins — $0.02!";
+  } else if (withdrawThreshold <= 500) {
+    withdrawMinimumText.textContent = "Minimum withdrawal: 500 coins ($0.10).";
+  } else {
+    withdrawMinimumText.textContent = "Minimum withdrawal: 1,000 coins ($0.20).";
   }
 }
 
@@ -633,13 +652,13 @@ function updateWithdrawalEstimate() {
   const balance = Number(balanceElement.textContent);
 
   if (!rawCoins || !Number.isFinite(coins) || coins <= 0) {
-    withdrawEstimate.textContent = "50 coins = ₹1. Available balance: " +
+    withdrawEstimate.textContent = "50 coins = $0.01. Available balance: " +
       (Number.isFinite(balance) ? balance : "—") + " coins.";
     return;
   }
 
-  withdrawEstimate.textContent = "Estimated payout: ₹" +
-    (coins / 50).toFixed(2) +
+  withdrawEstimate.textContent = "Estimated payout: $" +
+    (coins / COINS_PER_USD).toFixed(2) +
     ". Available balance: " +
     (Number.isFinite(balance) ? balance : "—") + " coins.";
 }
@@ -685,8 +704,8 @@ async function submitWithdrawal(event) {
   }
 
   const confirmed = window.confirm(
-    "Request withdrawal of " + coins + " coins (₹" +
-    (coins / 50).toFixed(2) + ") to UPI ID " + upi + "?"
+    "Request withdrawal of " + coins + " coins ($" +
+    (coins / COINS_PER_USD).toFixed(2) + ") to UPI ID " + upi + "?"
   );
 
   if (!confirmed) return;
@@ -699,8 +718,8 @@ async function submitWithdrawal(event) {
     const result = await apiRequest("/api/withdraw", { coins, upi });
 
     withdrawMessage.textContent = "Request submitted. Request ID: " +
-      result.withdrawal_id + ". Amount: ₹" +
-      Number(result.amount_inr).toFixed(2) + ". Status: Pending.";
+      result.withdrawal_id + ". Amount: $" +
+      (coins / COINS_PER_USD).toFixed(2) + ". Status: Pending.";
 
     withdrawCoins.value = "";
     upiInput.value = "";
