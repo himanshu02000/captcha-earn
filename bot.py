@@ -522,6 +522,16 @@ def telegram_webapp_js():
     )
 
 
+@app.route("/landing.html")
+def landing_page():
+    # Public landing page (white/blue mockup design). Served as a static
+    # file, same as the app itself.
+    return send_from_directory(
+        BASE_DIR,
+        "landing.html"
+    )
+
+
 @app.route("/health")
 def health():
 

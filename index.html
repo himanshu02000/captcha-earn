@@ -14,10 +14,10 @@
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; background: #F4F8FE; color: #0F2440; font-family: -apple-system, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif; }
-    .header { background: #F4F8FE; padding: 18px 18px 12px; }
+    .header { position: sticky; top: 0; z-index: 20; background: rgba(255,255,255,.94); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid #DCE8F5; box-shadow: 0 2px 12px rgba(23,105,211,.06); padding: 12px 18px; }
     .header-inner { max-width: 720px; margin: auto; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
     .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
-    .brand-icon { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #1769d3, #2c7be5); display: grid; place-items: center; font-size: 20px; font-weight: 900; color: #fff; flex-shrink: 0; }
+    .brand-icon { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #1769d3, #2c7be5); display: grid; place-items: center; font-size: 20px; font-weight: 900; color: #fff; flex-shrink: 0; box-shadow: 0 4px 12px rgba(23,105,211,.35); }
     .brand h1 { margin: 0; font-size: 17px; color: #0F2440; }
     .brand p { margin: 5px 0 0; font-size: 11px; color: #6B7C93; }
     .balance-pill { background: rgba(23,105,211,.1); border: 1px solid rgba(23,105,211,.35); color: #1769d3; border-radius: 999px; padding: 8px 12px; text-align: right; }
@@ -72,6 +72,21 @@
     .method-btn, .network-btn { flex: 1; width: auto; margin-top: 0; padding: 12px 4px; border-radius: 12px; background: rgba(23,105,211,.08); border: 1px solid rgba(23,105,211,.35); color: #1769d3; font-size: 14px; font-weight: 700; }
     .method-btn.active, .network-btn.active { background: linear-gradient(135deg, #1769d3, #2c7be5); border-color: transparent; color: #fff; }
     .method-note { font-size: 13px; color: #6B7C93; margin-top: 8px; line-height: 1.45; }
+    /* ---- subtle motion: lively but calm ---- */
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.07); } 100% { transform: scale(1); } }
+    @keyframes softPulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }
+    .hero-card { animation: fadeUp .45s ease both; }
+    .trust { animation: fadeUp .45s ease .05s both; }
+    .card, .fairplay-strip, footer { animation: fadeUp .45s ease .1s both; }
+    .hero-balance span:first-child { display: inline-block; }
+    .hero-balance span:first-child.pop { animation: pop .25s ease; }
+    .live-label { animation: softPulse 2.2s ease-in-out infinite; }
+    button { transition: transform .12s ease, filter .15s ease; }
+    button:hover { filter: brightness(1.06); }
+    button:active { transform: scale(.97); }
+    .method-btn, .network-btn { transition: background .15s ease, color .15s ease, transform .12s ease; }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
     @media (max-width: 520px) {
       .header-inner { align-items: flex-start; }
       .brand h1 { font-size: 17px; }
@@ -88,7 +103,6 @@
       <div class="brand-icon">$</div>
       <div>
         <h1>Captcha Earn</h1>
-        <p>Solve CAPTCHA • Earn Coins • Withdraw</p>
       </div>
     </div>
     <div class="balance-pill">
@@ -116,7 +130,7 @@
 
   <div class="fairplay-strip" role="note">
     <div>⚠️</div>
-    <div><strong>Work fair.</strong> Cheating or fake activity to earn coins will get your account banned and your withdrawals rejected. Please earn the genuine way.</div>
+    <div>Cheating or fake activity will get your account banned and withdrawals rejected. Earn honestly!</div>
   </div>
 
   <section class="card">
@@ -150,10 +164,8 @@
     <h2>🤖 Auto-Solve CAPTCHA</h2>
     <span id="auto-mode-label" class="live-label">LIVE — EARNS REAL COINS</span>
     <p class="muted">
-      Tap Start Bot and the bot solves CAPTCHAs for you in a
-      <strong>25-minute session</strong>. Each cycle: watch a short ad,
-      then the bot auto-solves the CAPTCHA in 10 seconds and you earn
-      <strong>+1 coin</strong>.
+      Tap Start Bot to begin a 25-minute session. Watch a short ad, and
+      the bot auto-solves a CAPTCHA in 10 seconds for +1 coin per cycle.
     </p>
     <div class="session-strip">
       <div>⏱ Session left: <strong id="auto-session-timer">25:00</strong></div>
@@ -400,6 +412,10 @@ async function apiRequest(endpoint, data = {}) {
 function setBalance(value) {
   const numericValue = Number(value) || 0;
   balanceElement.textContent = numericValue;
+  // Tiny pop on the balance number so earning feels alive.
+  balanceElement.classList.remove("pop");
+  void balanceElement.offsetWidth;
+  balanceElement.classList.add("pop");
   // Header pill shows the dollar value, like the mockup.
   topBalanceElement.textContent = "$" + (numericValue / COINS_PER_USD).toFixed(2);
 
