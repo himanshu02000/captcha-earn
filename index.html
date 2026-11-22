@@ -13,60 +13,71 @@
   <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
   <style>
     * { box-sizing: border-box; }
-    body { margin: 0; background: #eef5fc; color: #172b4d; font-family: Arial, Helvetica, sans-serif; }
-    .header { background: linear-gradient(135deg,#1769d3,#2c7be5); color: white; padding: 22px 18px; }
+    body { margin: 0; background: #F4F8FE; color: #0F2440; font-family: -apple-system, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif; }
+    .header { background: #F4F8FE; padding: 18px 18px 12px; }
     .header-inner { max-width: 720px; margin: auto; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
-    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
-    .brand-icon { width: 48px; height: 48px; border-radius: 14px; background: rgba(255,255,255,.18); display: grid; place-items: center; font-size: 27px; }
-    .brand h1 { margin: 0; font-size: 22px; }
-    .brand p { margin: 5px 0 0; font-size: 12px; opacity: .88; }
-    .balance-pill { background: rgba(7,43,96,.42); border-radius: 18px; padding: 9px 13px; text-align: right; }
-    .balance-pill span { display: block; font-size: 11px; opacity: .82; }
-    .balance-pill strong { display: block; margin-top: 2px; font-size: 18px; }
-    .container { max-width: 720px; margin: 20px auto; padding: 0 14px 30px; }
-    .welcome { text-align: center; color: #2874d5; font-size: 14px; margin: 0 0 14px; }
-    .card { background: white; border: 1px solid #dce8f5; border-radius: 20px; padding: 20px; margin-bottom: 16px; box-shadow: 0 8px 28px rgba(25,70,120,.08); }
-    .card h2 { margin: 0 0 8px; font-size: 20px; }
-    .muted { color: #6b7c93; font-size: 14px; line-height: 1.55; }
-    .balance-card { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
-    .balance-number { font-size: 32px; font-weight: 800; color: #1769d3; margin-top: 4px; }
-    .coin-icon { width: 58px; height: 58px; border-radius: 50%; background: #fff4b8; display: grid; place-items: center; font-size: 29px; flex-shrink: 0; }
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .brand-icon { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #1769d3, #2c7be5); display: grid; place-items: center; font-size: 20px; font-weight: 900; color: #fff; flex-shrink: 0; }
+    .brand h1 { margin: 0; font-size: 17px; color: #0F2440; }
+    .brand p { margin: 5px 0 0; font-size: 11px; color: #6B7C93; }
+    .balance-pill { background: rgba(23,105,211,.1); border: 1px solid rgba(23,105,211,.35); color: #1769d3; border-radius: 999px; padding: 8px 12px; text-align: right; }
+    .balance-pill span { display: block; font-size: 11px; color: #1769d3; opacity: .75; }
+    .balance-pill strong { display: block; margin-top: 2px; font-size: 14px; font-weight: 800; }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 14px 30px; }
+    .welcome { text-align: center; color: #5B6B82; font-size: 14px; margin: 0 0 14px; }
+    .hero-card { margin: 6px 0 0; padding: 18px; border-radius: 22px; background: linear-gradient(135deg, #1769d3, #2c7be5); color: #fff; }
+    .hero-card small { font-size: 12px; color: rgba(255,255,255,.78); letter-spacing: .06em; text-transform: uppercase; font-weight: 700; }
+    .hero-balance { margin-top: 6px; font-size: 38px; font-weight: 800; letter-spacing: -0.02em; color: #fff; }
+    .hero-balance span:last-child { font-size: 18px; color: rgba(255,255,255,.78); font-weight: 600; }
+    .hero-usd { margin-top: 2px; font-size: 15px; color: #DBEAFE; font-weight: 700; }
+    .hero-card .progress-track { margin-top: 14px; height: 9px; background: rgba(255,255,255,.28); }
+    .hero-card .progress-fill { background: #fff; }
+    .hero-card #withdraw-progress-text { margin-top: 8px; font-size: 12.5px; color: rgba(255,255,255,.88); font-weight: 400; }
+    .trust { margin-top: 12px; display: flex; gap: 8px; }
+    .trust div { flex: 1; text-align: center; padding: 12px 4px; border-radius: 14px; background: #fff; border: 1px solid #DCE8F5; }
+    .trust b { display: block; font-size: 16px; color: #1769d3; }
+    .trust span { display: block; margin-top: 3px; font-size: 11px; color: #6B7C93; line-height: 1.3; }
+    .card { background: #fff; border: 1px solid #DCE8F5; border-radius: 20px; padding: 16px; margin-bottom: 12px; box-shadow: 0 6px 18px rgba(23,105,211,.06); }
+    .card h2 { margin: 0 0 8px; font-size: 16px; color: #0F2440; }
+    .muted { color: #6B7C93; font-size: 13px; line-height: 1.5; }
+    .coin-icon { width: 58px; height: 58px; border-radius: 50%; background: rgba(23,105,211,.1); display: grid; place-items: center; font-size: 29px; flex-shrink: 0; }
     .captcha-title { display: flex; align-items: center; gap: 12px; }
     .shield { width: 46px; height: 46px; border-radius: 50%; background: #e5f0ff; display: grid; place-items: center; font-size: 23px; flex-shrink: 0; }
-    .captcha-box { margin: 18px 0 12px; border: 2px solid #d4e0ee; border-radius: 15px; overflow: hidden; background: #f7fafc; }
+    .captcha-box { margin: 18px 0 12px; border: 1px dashed #B9CDE8; border-radius: 14px; overflow: hidden; background: #F4F8FE; }
     #captcha-image { display: block; width: 100%; height: auto; min-height: 130px; }
-    input { width: 100%; padding: 14px; border: 1px solid #cbd8e8; border-radius: 12px; background: white; color: #172b4d; font-size: 17px; outline: none; }
+    input { width: 100%; padding: 13px; border: 1px solid #CBD8E8; border-radius: 12px; background: #fff; color: #0F2440; font-size: 15px; outline: none; }
     input:focus { border-color: #287be5; box-shadow: 0 0 0 3px rgba(40,123,229,.12); }
-    button { width: 100%; border: 0; border-radius: 12px; padding: 14px; margin-top: 11px; background: #287be5; color: white; font-size: 16px; font-weight: 700; cursor: pointer; }
-    button.secondary { background: #edf4fc; color: #1769d3; }
+    button { width: 100%; border: 0; border-radius: 13px; padding: 14px; margin-top: 11px; background: linear-gradient(135deg, #1769d3, #2c7be5); color: #fff; font-size: 15.5px; font-weight: 800; cursor: pointer; }
+    button.secondary { background: #fff; border: 1px solid #C9D9EE; color: #1769d3; }
     button:disabled { opacity: .55; cursor: not-allowed; }
-    .refresh { text-align: center; margin: 13px 0 0; color: #287be5; font-weight: 700; cursor: pointer; font-size: 14px; }
+    .refresh { text-align: center; margin: 13px 0 0; color: #1769d3; font-weight: 700; cursor: pointer; font-size: 14px; }
     .reward-strip { margin-top: 18px; padding: 13px; border-radius: 14px; background: #f0f7ff; display: flex; align-items: center; gap: 13px; }
     .reward-strip strong { color: #198754; font-size: 20px; }
     #message, #ad-message, #withdraw-message, #auto-bot-status { margin-top: 12px; line-height: 1.5; overflow-wrap: anywhere; }
     .developer-note { margin-top: 17px; padding: 13px; border: 1px solid #dce8f5; border-radius: 13px; line-height: 1.5; }
     .developer-note h3 { margin: 0 0 7px; font-size: 15px; }
     label { display: block; margin: 14px 0 7px; font-size: 14px; font-weight: 700; }
-    footer { text-align: center; color: #8191a7; font-size: 12px; margin-top: 22px; }
+    footer { text-align: center; color: #8191A7; font-size: 12px; margin-top: 22px; }
     .demo-captcha { padding: 30px 10px; text-align: center; font-size: 28px; font-weight: 800; letter-spacing: 8px; color: #1769d3; overflow-wrap: anywhere; }
     .countdown { text-align: center; font-size: 32px; font-weight: 800; margin: 16px 0 4px; }
     .demo-label { display: inline-block; padding: 5px 9px; border-radius: 999px; background: #fff4d6; color: #845900; font-size: 12px; font-weight: 700; margin-bottom: 10px; }
     .live-label { display: inline-block; padding: 5px 9px; border-radius: 999px; background: #d9f5e3; color: #0f7a3d; font-size: 12px; font-weight: 700; margin-bottom: 10px; }
     .progress-track { margin-top: 12px; height: 16px; border-radius: 999px; background: #e3ecf7; overflow: hidden; }
-    .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, #287be5, #17c3d3); transition: width .5s ease; }
-    #withdraw-progress-text { margin-top: 8px; font-size: 14px; font-weight: 700; color: #172b4d; }
+    .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, #1769d3, #2c7be5); transition: width .5s ease; }
+    #withdraw-progress-text { margin-top: 8px; font-size: 14px; font-weight: 700; color: #0F2440; }
     .session-strip { display: flex; justify-content: space-between; gap: 10px; margin: 4px 0 12px; padding: 10px 13px; border-radius: 13px; background: #f0f7ff; font-size: 14px; }
     .fairplay-strip { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 12px; padding: 11px 13px; border-radius: 13px; background: #fef3f2; border: 1px solid #fecaca; font-size: 13.5px; color: #7f1d1d; }
     #auto-captcha-image { display: block; width: 100%; height: auto; min-height: 130px; }
     .method-row, .network-row { display: flex; gap: 8px; margin: 14px 0 0; }
-    .method-btn, .network-btn { flex: 1; width: auto; margin-top: 0; padding: 12px 4px; border-radius: 12px; background: #edf4fc; color: #1769d3; font-size: 14px; }
-    .method-btn.active, .network-btn.active { background: #287be5; color: white; }
-    .method-note { font-size: 13px; color: #6b7c93; margin-top: 8px; line-height: 1.45; }
+    .method-btn, .network-btn { flex: 1; width: auto; margin-top: 0; padding: 12px 4px; border-radius: 12px; background: rgba(23,105,211,.08); border: 1px solid rgba(23,105,211,.35); color: #1769d3; font-size: 14px; font-weight: 700; }
+    .method-btn.active, .network-btn.active { background: linear-gradient(135deg, #1769d3, #2c7be5); border-color: transparent; color: #fff; }
+    .method-note { font-size: 13px; color: #6B7C93; margin-top: 8px; line-height: 1.45; }
     @media (max-width: 520px) {
       .header-inner { align-items: flex-start; }
-      .brand h1 { font-size: 18px; }
-      .balance-pill strong { font-size: 16px; }
+      .brand h1 { font-size: 17px; }
+      .balance-pill strong { font-size: 14px; }
       .balance-pill { padding: 8px 10px; }
+      .hero-balance { font-size: 32px; }
     }
   </style>
 </head>
@@ -74,15 +85,14 @@
 <header class="header">
   <div class="header-inner">
     <div class="brand">
-      <div class="brand-icon">🛡️</div>
+      <div class="brand-icon">$</div>
       <div>
-        <h1>Captcha Earn India</h1>
+        <h1>Captcha Earn</h1>
         <p>Solve CAPTCHA • Earn Coins • Withdraw</p>
       </div>
     </div>
     <div class="balance-pill">
-      <span>Balance</span>
-      <strong><span id="top-balance">—</span> Coins</strong>
+      <strong><span id="top-balance">—</span></strong>
     </div>
   </div>
 </header>
@@ -90,13 +100,19 @@
 <main class="container">
   <p id="welcome" class="welcome">Connecting to your account...</p>
 
-  <section class="card balance-card">
-    <div>
-      <div class="muted">Your current balance</div>
-      <div class="balance-number"><span id="balance">—</span> Coins</div>
-    </div>
-    <div class="coin-icon">🪙</div>
+  <section class="hero-card">
+    <small>Your balance</small>
+    <div class="hero-balance"><span id="balance">—</span> <span>coins</span></div>
+    <div class="hero-usd" id="hero-usd">≈ $0.00</div>
+    <div class="progress-track"><div class="progress-fill" id="withdraw-progress-fill"></div></div>
+    <p id="withdraw-progress-text" role="status" aria-live="polite"></p>
   </section>
+
+  <div class="trust">
+    <div><b>$0.02</b><span>First payout</span></div>
+    <div><b>Daily</b><span>Withdrawals</span></div>
+    <div><b>100+</b><span>Users earning</span></div>
+  </div>
 
   <section class="card" id="checkin-card">
     <h2>📅 Daily Check-in</h2>
@@ -172,8 +188,6 @@
 
   <section class="card">
     <h2>💸 Withdraw</h2>
-    <div class="progress-track"><div class="progress-fill" id="withdraw-progress-fill"></div></div>
-    <p id="withdraw-progress-text" role="status" aria-live="polite"></p>
     <p class="muted" id="withdraw-minimum-text">🎉 First payout from just 100 coins — $0.02!</p>
     <form id="withdraw-form">
       <label>Payout method</label>
@@ -207,7 +221,7 @@
     </div>
   </section>
 
-  <footer>Captcha Earn India • Points and rewards</footer>
+  <footer>Captcha Earn • Real payouts, no investment</footer>
 </main>
 
 <script>
@@ -252,6 +266,7 @@ const checkinMessageEl = document.getElementById("checkin-message");
 const withdrawProgressFill = document.getElementById("withdraw-progress-fill");
 const withdrawProgressText = document.getElementById("withdraw-progress-text");
 const withdrawMinimumText = document.getElementById("withdraw-minimum-text");
+const heroUsdElement = document.getElementById("hero-usd");
 
 let initData = "";
 let challengeId = null;
@@ -394,7 +409,13 @@ async function apiRequest(endpoint, data = {}) {
 function setBalance(value) {
   const numericValue = Number(value) || 0;
   balanceElement.textContent = numericValue;
-  topBalanceElement.textContent = numericValue;
+  // Header pill shows the dollar value, like the mockup.
+  topBalanceElement.textContent = "$" + (numericValue / COINS_PER_USD).toFixed(2);
+
+  // Hero card shows the balance's dollar value live.
+  if (heroUsdElement) {
+    heroUsdElement.textContent = "≈ $" + (numericValue / COINS_PER_USD).toFixed(2);
+  }
 
   if (demoMode) {
     demoBalance = numericValue;
