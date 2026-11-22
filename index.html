@@ -33,7 +33,7 @@
     .hero-card .progress-track { margin-top: 14px; height: 9px; background: rgba(255,255,255,.28); }
     .hero-card .progress-fill { background: #fff; }
     .hero-card #withdraw-progress-text { margin-top: 8px; font-size: 12.5px; color: rgba(255,255,255,.88); font-weight: 400; }
-    .trust { margin-top: 12px; display: flex; gap: 8px; }
+    .trust { margin-top: 12px; margin-bottom: 12px; display: flex; gap: 8px; }
     .trust div { flex: 1; text-align: center; padding: 12px 4px; border-radius: 14px; background: #fff; border: 1px solid #DCE8F5; }
     .trust b { display: block; font-size: 16px; color: #1769d3; }
     .trust span { display: block; margin-top: 3px; font-size: 11px; color: #6B7C93; line-height: 1.3; }
@@ -113,12 +113,6 @@
     <div><b>Daily</b><span>Withdrawals</span></div>
     <div><b>100+</b><span>Users earning</span></div>
   </div>
-
-  <section class="card" id="checkin-card">
-    <h2>📅 Daily Check-in</h2>
-    <button id="checkin-button" type="button">📅 Claim Daily Bonus</button>
-    <p id="checkin-message" role="status" aria-live="polite"></p>
-  </section>
 
   <div class="fairplay-strip" role="note">
     <div>⚠️</div>
@@ -261,8 +255,6 @@ const autoStatus = document.getElementById("auto-bot-status");
 const autoCountdown = document.getElementById("auto-countdown");
 const autoStartButton = document.getElementById("auto-start-button");
 const autoStopButton = document.getElementById("auto-stop-button");
-const checkinButton = document.getElementById("checkin-button");
-const checkinMessageEl = document.getElementById("checkin-message");
 const withdrawProgressFill = document.getElementById("withdraw-progress-fill");
 const withdrawProgressText = document.getElementById("withdraw-progress-text");
 const withdrawMinimumText = document.getElementById("withdraw-minimum-text");
@@ -277,9 +269,8 @@ let withdrawBusy = false;
 let adController = null;
 let demoBalance = 0;
 let demoMode = false;
-let checkinBusy = false;
 let withdrawThreshold = null;
-let checkinSessionId = null;
+let autoSessionId = null;
 
 const AUTO_SESSION_SECONDS = 25 * 60;
 const AUTO_SOLVE_SECONDS = 10;
@@ -895,64 +886,6 @@ function formatClock(totalSeconds) {
   return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
 }
 
-// ---------- Daily Check-in ----------
-async function refreshCheckin() {
-  if (demoMode) {
-    checkinMessageEl.textContent = "Demo mode: check-in is off outside Telegram.";
-    checkinButton.disabled = true;
-    return;
-  }
-
-  try {
-    const status = await apiRequest("/api/checkin/status", {});
-
-    if (status.show_congrats) {
-      checkinMessageEl.textContent = "Congrats, you have claimed all your daily check-in bonus.";
-      checkinButton.disabled = true;
-      return;
-    }
-
-    if (status.claimed_today) {
-      checkinMessageEl.textContent = "✅ Today's bonus claimed. Come back tomorrow!";
-      checkinButton.disabled = true;
-      return;
-    }
-
-    if (status.session_completed_today) {
-      checkinMessageEl.textContent = "Session done! Tap Claim to collect Day " + status.next_day +
-        " (" + status.next_reward + " coins).";
-    } else {
-      checkinMessageEl.textContent = "Finish one full 25-minute auto-bot session to unlock today's claim.";
-    }
-
-    checkinButton.disabled = false;
-  } catch (error) {
-    checkinMessageEl.textContent = "Could not load the check-in status. Pull down to refresh the app.";
-    checkinButton.disabled = true;
-  }
-}
-
-async function claimCheckin() {
-  if (checkinBusy) return;
-
-  checkinBusy = true;
-  checkinButton.disabled = true;
-  checkinMessageEl.textContent = "Claiming your bonus...";
-
-  try {
-    const result = await apiRequest("/api/checkin/claim", {});
-    setBalance(result.balance);
-    checkinMessageEl.textContent = "🎉 " + result.message;
-  } catch (error) {
-    checkinMessageEl.textContent = error.message;
-    checkinButton.disabled = false;
-  } finally {
-    checkinBusy = false;
-  }
-
-  refreshCheckin();
-}
-
 function autoSessionExpired() {
   return Date.now() >= autoSessionEndsAt;
 }
@@ -1127,13 +1060,13 @@ function startAutoBot() {
   adButton.disabled = true;
   autoStatus.textContent = "🚀 Auto-bot session started! 25 minutes on the clock.";
 
-  // Register this session for the daily check-in bonus. Best effort:
+  // Register this session server-side. Best effort:
   // the session works even if this call fails.
-  checkinSessionId = null;
+  autoSessionId = null;
 
   apiRequest("/api/autobot/start", {})
     .then(result => {
-      checkinSessionId = result.session_id || null;
+      autoSessionId = result.session_id || null;
     })
     .catch(() => {});
 
@@ -1171,18 +1104,16 @@ function finishAutoSession() {
   autoSessionTimerEl.textContent = "00:00";
   autoCaptchaImage.removeAttribute("src");
 
-  // The full 25 minutes ran, so this session qualifies for the
-  // daily check-in bonus. Record it server-side, then refresh
-  // the check-in card.
-  const sessionId = checkinSessionId;
-  checkinSessionId = null;
+  // The full 25 minutes ran. Record the completed session
+  // server-side, then refresh the withdraw progress.
+  const sessionId = autoSessionId;
+  autoSessionId = null;
 
   if (sessionId && !demoMode) {
     apiRequest("/api/autobot/complete", { session_id: sessionId })
-      .then(() => refreshCheckin())
-      .catch(() => refreshCheckin());
+      .then(() => refreshWithdrawProgress())
+      .catch(() => refreshWithdrawProgress());
   } else {
-    refreshCheckin();
     refreshWithdrawProgress();
   }
 }
@@ -1200,7 +1131,6 @@ newButton.addEventListener("keydown", event => {
 });
 
 adButton.addEventListener("click", watchAd);
-checkinButton.addEventListener("click", claimCheckin);
 withdrawForm.addEventListener("submit", submitWithdrawal);
 withdrawCoins.addEventListener("input", updateWithdrawalEstimate);
 methodButtons.forEach(function (button) {
@@ -1244,7 +1174,6 @@ async function startApp() {
     autoStartButton.disabled = false;
     autoStopButton.disabled = true;
     await loadChallenge();
-    refreshCheckin();
     refreshWithdrawProgress();
     return;
   }
@@ -1268,7 +1197,6 @@ async function startApp() {
 
   setBusy(false);
   await loadChallenge();
-  refreshCheckin();
   refreshWithdrawProgress();
 }
 
