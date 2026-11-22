@@ -8,6 +8,7 @@ import time
 import secrets
 import threading
 import random
+import re
 import html
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import parse_qsl
@@ -424,7 +425,7 @@ async def start_command(
         "and watching available ads.\n\n"
         "✅ Complete tasks and earn coins\n"
         "⏰ Work at your own pace\n"
-        "💸 Submit withdrawal requests through UPI when eligible\n\n"
+        "💸 Submit withdrawal requests through UPI, PayPal or USDT when eligible\n\n"
         "📢 Payment updates and verified withdrawal proofs:\n"
         f"{CHANNEL_URL}\n\n"
         "⏳ The app may take 30–60 seconds to load after inactivity. "
@@ -456,8 +457,10 @@ async def help_command(
         "2. Solve CAPTCHAs to earn coins\n"
         "3. Watch ads for extra rewards\n"
         "4. Request withdrawal when eligible\n\n"
-        "Minimum withdrawal: 100 coins ($0.02) on your first withdrawal, "
-        "then 500 coins ($0.10), then 1,000 coins ($0.20)."
+        "Minimum withdrawal: UPI — 100 coins ($0.02) on your first withdrawal, "
+        "then 500 coins ($0.10), then 1,000 coins ($0.20). "
+        "PayPal — 25,000 coins ($5.00), for users outside India. "
+        "USDT — 5,000 coins ($1.00) on BSC, 50,000 coins ($10.00) on Tron."
     )
 
     if update.message:
@@ -1456,6 +1459,16 @@ WITHDRAW_FAST_TRACK_THRESHOLD = 100
 WITHDRAW_FIRST_THRESHOLD = 500
 WITHDRAW_LATER_THRESHOLD = 1000
 
+# Payout methods (Nov 22): UPI keeps the 100/500/1000 ladder.
+# PayPal and USDT are flat minimums (fee-driven, not laddered).
+# $ display only: 50 coins = $0.01 (COINS_PER_USD = 5000 in index.html).
+WITHDRAW_PAYPAL_MINIMUM = 25000   # $5.00
+WITHDRAW_USDT_BSC_MINIMUM = 5000  # $1.00
+WITHDRAW_USDT_TRC20_MINIMUM = 50000  # $10.00
+
+PAYOUT_METHODS = ("UPI", "PayPal", "USDT")
+USDT_NETWORKS = ("BSC", "TRC20")
+
 
 def withdrawal_threshold(telegram_id):
     """100 coins for the first withdrawal, 500 for the second,
@@ -1513,6 +1526,92 @@ def withdraw_progress():
     })
 
 
+def payout_minimum(method, network, telegram_id):
+    """Minimum coins for a withdrawal, by payout method.
+
+    UPI follows the 100/500/1000 ladder; PayPal and USDT are flat
+    minimums because their payout fees are fixed per transfer.
+    """
+
+    if method == "PayPal":
+        return WITHDRAW_PAYPAL_MINIMUM
+
+    if method == "USDT":
+        if network == "TRC20":
+            return WITHDRAW_USDT_TRC20_MINIMUM
+        return WITHDRAW_USDT_BSC_MINIMUM
+
+    return withdrawal_threshold(telegram_id)
+
+
+def payout_minimum_message(method, network, telegram_id):
+    """Human-readable minimum message for one method ($ display only)."""
+
+    if method == "PayPal":
+        return (
+            "PayPal withdrawals need at least 25,000 coins ($5.00). "
+            "PayPal is for users outside India."
+        )
+
+    if method == "USDT":
+        if network == "TRC20":
+            return "USDT (Tron) withdrawals need at least 50,000 coins ($10.00)."
+        return "USDT (BSC) withdrawals need at least 5,000 coins ($1.00)."
+
+    threshold = withdrawal_threshold(telegram_id)
+    if threshold <= WITHDRAW_FAST_TRACK_THRESHOLD:
+        return (
+            "Your minimum withdrawal is "
+            "100 coins ($0.02) for your first "
+            "withdrawal, then 500 coins ($0.10), "
+            "then 1,000 coins ($0.20)."
+        )
+    if threshold <= WITHDRAW_FIRST_THRESHOLD:
+        return "Your minimum withdrawal is 500 coins ($0.10) for this withdrawal."
+    return "Your minimum withdrawal is 1,000 coins ($0.20) for this withdrawal."
+
+
+def validate_payout_details(method, details, network):
+    """Return an error string, or None when the details look valid."""
+
+    if method == "UPI":
+        if (
+            len(details) < 3
+            or len(details) > 200
+            or any(character.isspace() for character in details)
+        ):
+            return "Enter a valid UPI ID without spaces."
+        return None
+
+    if method == "PayPal":
+        if (
+            len(details) > 254
+            or " " in details
+            or not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", details)
+        ):
+            return "Enter a valid PayPal email address."
+        return None
+
+    if method == "USDT":
+        if network == "BSC":
+            if not re.match(r"^0x[0-9a-fA-F]{40}$", details):
+                return (
+                    "Enter a valid BSC (BEP20) USDT address "
+                    "(starts with 0x, 42 characters)."
+                )
+            return None
+        if network == "TRC20":
+            if not re.match(r"^T[1-9A-HJ-NP-Za-km-z]{33}$", details):
+                return (
+                    "Enter a valid Tron (TRC20) USDT address "
+                    "(starts with T, 34 characters)."
+                )
+            return None
+        return "Choose a network: BSC or Tron."
+
+    return "Choose a payout method: UPI, PayPal or USDT."
+
+
 # =========================================================
 # WITHDRAWAL API
 # =========================================================
@@ -1533,7 +1632,60 @@ def request_withdrawal():
     body = request.get_json(silent=True) or {}
 
     raw_coins = body.get("coins")
-    upi = body.get("upi")
+
+    # Payout method: UPI, PayPal or USDT. A body with no method at
+    # all is the legacy frontend (it only sent "upi"), so UPI.
+    raw_method = body.get("payout_method")
+    method = None
+    if raw_method is None:
+        method = "UPI"
+    elif isinstance(raw_method, str):
+        method_lookup = {
+            "upi": "UPI",
+            "paypal": "PayPal",
+            "usdt": "USDT",
+        }
+        method = method_lookup.get(raw_method.strip().lower())
+
+    if method is None:
+        return jsonify({
+            "ok": False,
+            "error": "Choose a payout method: UPI, PayPal or USDT."
+        }), 400
+
+    # Network matters only for USDT (BSC or Tron). It is ignored
+    # for UPI and PayPal.
+    network = None
+    if method == "USDT":
+        raw_network = body.get("network")
+        if isinstance(raw_network, str):
+            network_lookup = {
+                "bsc": "BSC",
+                "bep20": "BSC",
+                "trc20": "TRC20",
+                "tron": "TRC20",
+            }
+            network = network_lookup.get(raw_network.strip().lower())
+
+        if network is None:
+            return jsonify({
+                "ok": False,
+                "error": "Choose a network: BSC or Tron."
+            }), 400
+
+    # Details field: "payout_details" from the new frontend,
+    # falling back to the legacy "upi" key.
+    raw_details = body.get("payout_details")
+    if raw_details is None:
+        raw_details = body.get("upi")
+
+    if not isinstance(raw_details, str):
+        return jsonify({
+            "ok": False,
+            "error": "Enter your payout details."
+        }), 400
+
+    details = raw_details.strip()
 
     if isinstance(raw_coins, bool):
         return jsonify({
@@ -1581,22 +1733,21 @@ def request_withdrawal():
                 "The amount must be a multiple of 50 coins."
         }), 400
 
-    if not isinstance(upi, str):
+    details_error = validate_payout_details(method, details, network)
+    if details_error is not None:
         return jsonify({
             "ok": False,
-            "error": "Enter your UPI ID."
+            "error": details_error
         }), 400
 
-    upi = upi.strip()
-
-    if (
-        len(upi) < 3
-        or len(upi) > 200
-        or any(character.isspace() for character in upi)
-    ):
+    # Per-method minimum, checked here before the RPC so the user
+    # gets the right message for the method they picked. The RPC
+    # enforces the same rule again as the final guard.
+    minimum = payout_minimum(method, network, telegram_id)
+    if coins < minimum:
         return jsonify({
             "ok": False,
-            "error": "Enter a valid UPI ID without spaces."
+            "error": payout_minimum_message(method, network, telegram_id)
         }), 400
 
     try:
@@ -1605,7 +1756,9 @@ def request_withdrawal():
             {
                 "p_telegram_id": telegram_id,
                 "p_coins": coins,
-                "p_upi": upi
+                "p_payout_details": details,
+                "p_payout_method": method,
+                "p_network": network,
             }
         ).execute()
 
@@ -1620,6 +1773,9 @@ def request_withdrawal():
             "withdrawal_id": withdrawal_id,
             "coins": coins,
             "amount_inr": coins / 50,
+            "amount_usd": coins / 5000,
+            "payout_method": method,
+            "network": network,
             "status": "pending"
         }), 200
 
@@ -1632,11 +1788,7 @@ def request_withdrawal():
         if "Minimum withdrawal is" in error_text:
             return jsonify({
                 "ok": False,
-                "error":
-                    "Your minimum withdrawal is "
-                    "100 coins ($0.02) for your first "
-                    "withdrawal, then 500 coins ($0.10), "
-                    "then 1,000 coins ($0.20)."
+                "error": payout_minimum_message(method, network, telegram_id)
             }), 400
 
         if "Insufficient balance" in error_text:
@@ -1659,6 +1811,30 @@ def request_withdrawal():
             return jsonify({
                 "ok": False,
                 "error": "Please enter valid UPI details."
+            }), 400
+
+        if "Invalid PayPal email" in error_text:
+            return jsonify({
+                "ok": False,
+                "error": "Please enter a valid PayPal email address."
+            }), 400
+
+        if "Invalid USDT address" in error_text:
+            return jsonify({
+                "ok": False,
+                "error": "Please enter a valid USDT wallet address."
+            }), 400
+
+        if "Invalid payout method" in error_text:
+            return jsonify({
+                "ok": False,
+                "error": "Choose a payout method: UPI, PayPal or USDT."
+            }), 400
+
+        if "Invalid network" in error_text:
+            return jsonify({
+                "ok": False,
+                "error": "Choose a network: BSC or Tron."
             }), 400
 
         if "User account not found" in error_text:

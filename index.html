@@ -58,6 +58,10 @@
     .session-strip { display: flex; justify-content: space-between; gap: 10px; margin: 4px 0 12px; padding: 10px 13px; border-radius: 13px; background: #f0f7ff; font-size: 14px; }
     .fairplay-strip { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 12px; padding: 11px 13px; border-radius: 13px; background: #fef3f2; border: 1px solid #fecaca; font-size: 13.5px; color: #7f1d1d; }
     #auto-captcha-image { display: block; width: 100%; height: auto; min-height: 130px; }
+    .method-row, .network-row { display: flex; gap: 8px; margin: 14px 0 0; }
+    .method-btn, .network-btn { flex: 1; width: auto; margin-top: 0; padding: 12px 4px; border-radius: 12px; background: #edf4fc; color: #1769d3; font-size: 14px; }
+    .method-btn.active, .network-btn.active { background: #287be5; color: white; }
+    .method-note { font-size: 13px; color: #6b7c93; margin-top: 8px; line-height: 1.45; }
     @media (max-width: 520px) {
       .header-inner { align-items: flex-start; }
       .brand h1 { font-size: 18px; }
@@ -172,12 +176,23 @@
     <p id="withdraw-progress-text" role="status" aria-live="polite"></p>
     <p class="muted" id="withdraw-minimum-text">🎉 First payout from just 100 coins — $0.02!</p>
     <form id="withdraw-form">
+      <label>Payout method</label>
+      <div class="method-row" role="group" aria-label="Payout method">
+        <button type="button" class="method-btn active" data-method="UPI">UPI</button>
+        <button type="button" class="method-btn" data-method="PayPal">PayPal</button>
+        <button type="button" class="method-btn" data-method="USDT">USDT</button>
+      </div>
+      <p class="method-note" id="payout-method-note">For users in India — paid to your UPI ID.</p>
+      <div class="network-row" id="network-row" style="display: none;" role="group" aria-label="USDT network">
+        <button type="button" class="network-btn active" data-network="BSC">BSC (BEP20)</button>
+        <button type="button" class="network-btn" data-network="TRC20">Tron (TRC20)</button>
+      </div>
+      <label for="payout-details" id="payout-details-label">Your UPI ID</label>
+      <input id="payout-details" type="text" maxlength="200"
+        placeholder="e.g. name@bank" autocomplete="off" required>
       <label for="withdraw-coins">Coins to withdraw</label>
       <input id="withdraw-coins" type="number" inputmode="numeric"
         min="100" step="50" placeholder="Enter coins, e.g. 100" required>
-      <label for="upi-id">Your UPI ID</label>
-      <input id="upi-id" type="text" maxlength="200"
-        placeholder="e.g. name@bank" autocomplete="off" required>
       <p id="withdraw-estimate" class="muted">Enter a coin amount to see the payout.</p>
       <button id="withdraw-button" type="submit">Submit Withdrawal Request</button>
       <p id="withdraw-message" role="status" aria-live="polite"></p>
@@ -214,7 +229,12 @@ const adButton = document.getElementById("ad-button");
 const adMessage = document.getElementById("ad-message");
 const withdrawForm = document.getElementById("withdraw-form");
 const withdrawCoins = document.getElementById("withdraw-coins");
-const upiInput = document.getElementById("upi-id");
+const payoutDetailsInput = document.getElementById("payout-details");
+const payoutDetailsLabel = document.getElementById("payout-details-label");
+const payoutMethodNote = document.getElementById("payout-method-note");
+const networkRow = document.getElementById("network-row");
+const methodButtons = document.querySelectorAll(".method-btn");
+const networkButtons = document.querySelectorAll(".network-btn");
 const withdrawButton = document.getElementById("withdraw-button");
 const withdrawMessage = document.getElementById("withdraw-message");
 const withdrawEstimate = document.getElementById("withdraw-estimate");
@@ -252,6 +272,15 @@ const AUTO_SOLVE_SECONDS = 10;
 // Display only: 50 coins = $0.01, so 5,000 coins = $1.
 // Payouts still settle in rupees over UPI.
 const COINS_PER_USD = 5000;
+
+// Payout methods (Nov 22): UPI keeps the 100/500/1000 ladder.
+// PayPal and USDT are flat minimums (fee-driven, not laddered).
+const PAYPAL_MINIMUM = 25000;      // $5.00, for users outside India
+const USDT_BSC_MINIMUM = 5000;     // $1.00
+const USDT_TRC20_MINIMUM = 50000;  // $10.00
+
+let payoutMethod = "UPI";
+let usdtNetwork = "BSC";
 
 let autoBotRunning = false;
 let autoRunToken = 0;
@@ -376,29 +405,92 @@ function setBalance(value) {
 }
 
 // ---------- Withdrawal progress bar ----------
-function updateWithdrawProgress(balance) {
-  if (withdrawThreshold === null) return;
+// Minimum for the method the user picked: the live UPI ladder from
+// /api/withdraw/progress, or the flat PayPal / USDT minimums.
+function selectedMethodMinimum() {
+  if (payoutMethod === "PayPal") return PAYPAL_MINIMUM;
+  if (payoutMethod === "USDT") {
+    return usdtNetwork === "TRC20" ? USDT_TRC20_MINIMUM : USDT_BSC_MINIMUM;
+  }
+  return withdrawThreshold === null ? 100 : withdrawThreshold;
+}
 
+function selectedMethodLabel() {
+  if (payoutMethod === "PayPal") return "PayPal";
+  if (payoutMethod === "USDT") {
+    return usdtNetwork === "TRC20" ? "USDT (Tron)" : "USDT (BSC)";
+  }
+  return "UPI";
+}
+
+function updatePayoutMethodUI() {
+  methodButtons.forEach(function (button) {
+    button.classList.toggle("active", button.dataset.method === payoutMethod);
+  });
+  networkButtons.forEach(function (button) {
+    button.classList.toggle("active", button.dataset.network === usdtNetwork);
+  });
+
+  networkRow.style.display = payoutMethod === "USDT" ? "flex" : "none";
+
+  if (payoutMethod === "UPI") {
+    payoutDetailsLabel.textContent = "Your UPI ID";
+    payoutDetailsInput.placeholder = "e.g. name@bank";
+    payoutDetailsInput.maxLength = 200;
+    payoutMethodNote.textContent = "For users in India — paid to your UPI ID.";
+  } else if (payoutMethod === "PayPal") {
+    payoutDetailsLabel.textContent = "Your PayPal email";
+    payoutDetailsInput.placeholder = "e.g. name@email.com";
+    payoutDetailsInput.maxLength = 254;
+    payoutMethodNote.textContent = "For users outside India — paid to your PayPal email.";
+  } else if (usdtNetwork === "TRC20") {
+    payoutDetailsLabel.textContent = "Your USDT wallet address (Tron)";
+    payoutDetailsInput.placeholder = "e.g. T...";
+    payoutDetailsInput.maxLength = 34;
+    payoutMethodNote.textContent = "Paid in USDT on Tron (TRC20). Double-check the address and network — a wrong network loses the funds.";
+  } else {
+    payoutDetailsLabel.textContent = "Your USDT wallet address (BSC)";
+    payoutDetailsInput.placeholder = "e.g. 0x...";
+    payoutDetailsInput.maxLength = 42;
+    payoutMethodNote.textContent = "Paid in USDT on BSC (BEP20). Double-check the address and network — a wrong network loses the funds.";
+  }
+
+  updateWithdrawProgress(Number(balanceElement.textContent) || 0);
+  updateWithdrawalEstimate();
+}
+
+function updateWithdrawProgress(balance) {
+  // UPI needs the live threshold from the server; PayPal / USDT
+  // minimums are fixed, so they work even before it loads.
+  if (payoutMethod === "UPI" && withdrawThreshold === null) return;
+
+  const minimum = selectedMethodMinimum();
   const safeBalance = Math.max(0, Number(balance) || 0);
-  const percent = Math.min(100, Math.floor(safeBalance * 100 / withdrawThreshold));
+  const percent = Math.min(100, Math.floor(safeBalance * 100 / minimum));
 
   withdrawProgressFill.style.width = percent + "%";
 
-  if (safeBalance >= withdrawThreshold) {
+  if (safeBalance >= minimum) {
     withdrawProgressText.textContent = "✅ Withdrawal unlocked! You can cash out now.";
   } else {
-    const remaining = withdrawThreshold - safeBalance;
-    withdrawProgressText.textContent = safeBalance + " / " + withdrawThreshold +
-      " coins ($" + (withdrawThreshold / COINS_PER_USD).toFixed(2) +
+    const remaining = minimum - safeBalance;
+    withdrawProgressText.textContent = safeBalance + " / " + minimum +
+      " coins ($" + (minimum / COINS_PER_USD).toFixed(2) +
       ") — " + remaining + " more to unlock withdrawal 🚀";
   }
 
-  // Keep the form and the minimum text in step with the live threshold:
-  // 100 coins for a first payout, then 500, then 1,000.
-  withdrawCoins.min = String(withdrawThreshold);
-  withdrawCoins.placeholder = "Enter coins, e.g. " + withdrawThreshold;
+  // Keep the form and the minimum text in step with the selected
+  // method: UPI ladder 100/500/1,000, PayPal 25,000, USDT 5,000/50,000.
+  withdrawCoins.min = String(minimum);
+  withdrawCoins.placeholder = "Enter coins, e.g. " + minimum;
 
-  if (withdrawThreshold <= 100) {
+  if (payoutMethod === "PayPal") {
+    withdrawMinimumText.textContent = "Minimum withdrawal: 25,000 coins ($5.00) on PayPal.";
+  } else if (payoutMethod === "USDT" && usdtNetwork === "TRC20") {
+    withdrawMinimumText.textContent = "Minimum withdrawal: 50,000 coins ($10.00) on USDT (Tron).";
+  } else if (payoutMethod === "USDT") {
+    withdrawMinimumText.textContent = "Minimum withdrawal: 5,000 coins ($1.00) on USDT (BSC).";
+  } else if (withdrawThreshold <= 100) {
     withdrawMinimumText.textContent = "🎉 First payout from just 100 coins — $0.02!";
   } else if (withdrawThreshold <= 500) {
     withdrawMinimumText.textContent = "Minimum withdrawal: 500 coins ($0.10).";
@@ -669,7 +761,7 @@ async function submitWithdrawal(event) {
   if (withdrawBusy) return;
 
   if (demoMode) {
-    withdrawMessage.textContent = "Demo mode only: real UPI withdrawal requests are disabled outside Telegram.";
+    withdrawMessage.textContent = "Demo mode only: real withdrawal requests are disabled outside Telegram.";
     return;
   }
 
@@ -680,7 +772,7 @@ async function submitWithdrawal(event) {
 
   const rawCoins = withdrawCoins.value.trim();
   const coins = Number(rawCoins);
-  const upi = upiInput.value.trim();
+  const details = payoutDetailsInput.value.trim();
   const balance = Number(balanceElement.textContent);
 
   if (!/^\d+$/.test(rawCoins) || !Number.isSafeInteger(coins)) {
@@ -698,14 +790,50 @@ async function submitWithdrawal(event) {
     return;
   }
 
-  if (!upi || /\s/.test(upi) || upi.length < 3 || upi.length > 200) {
-    withdrawMessage.textContent = "Enter a valid UPI ID without spaces.";
+  // Payout details must match the method the user picked.
+  if (payoutMethod === "UPI") {
+    if (!details || /\s/.test(details) || details.length < 3 || details.length > 200) {
+      withdrawMessage.textContent = "Enter a valid UPI ID without spaces.";
+      return;
+    }
+  } else if (payoutMethod === "PayPal") {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(details) || details.length > 254) {
+      withdrawMessage.textContent = "Enter a valid PayPal email address.";
+      return;
+    }
+  } else if (usdtNetwork === "BSC") {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(details)) {
+      withdrawMessage.textContent = "Enter a valid BSC (BEP20) USDT address (starts with 0x, 42 characters).";
+      return;
+    }
+  } else if (!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(details)) {
+    withdrawMessage.textContent = "Enter a valid Tron (TRC20) USDT address (starts with T, 34 characters).";
+    return;
+  }
+
+  // Minimum for the picked method, checked here before sending.
+  const minimum = selectedMethodMinimum();
+  if (coins < minimum) {
+    if (payoutMethod === "PayPal") {
+      withdrawMessage.textContent = "PayPal withdrawals need at least 25,000 coins ($5.00).";
+    } else if (payoutMethod === "USDT" && usdtNetwork === "TRC20") {
+      withdrawMessage.textContent = "USDT (Tron) withdrawals need at least 50,000 coins ($10.00).";
+    } else if (payoutMethod === "USDT") {
+      withdrawMessage.textContent = "USDT (BSC) withdrawals need at least 5,000 coins ($1.00).";
+    } else if (withdrawThreshold <= 100) {
+      withdrawMessage.textContent = "Your minimum withdrawal is 100 coins ($0.02) for your first withdrawal, then 500 coins ($0.10), then 1,000 coins ($0.20).";
+    } else if (withdrawThreshold <= 500) {
+      withdrawMessage.textContent = "Your minimum withdrawal is 500 coins ($0.10) for this withdrawal.";
+    } else {
+      withdrawMessage.textContent = "Your minimum withdrawal is 1,000 coins ($0.20) for this withdrawal.";
+    }
     return;
   }
 
   const confirmed = window.confirm(
     "Request withdrawal of " + coins + " coins ($" +
-    (coins / COINS_PER_USD).toFixed(2) + ") to UPI ID " + upi + "?"
+    (coins / COINS_PER_USD).toFixed(2) + ") via " + selectedMethodLabel() +
+    " to " + details + "?"
   );
 
   if (!confirmed) return;
@@ -715,14 +843,19 @@ async function submitWithdrawal(event) {
   withdrawMessage.textContent = "Submitting your withdrawal request...";
 
   try {
-    const result = await apiRequest("/api/withdraw", { coins, upi });
+    const result = await apiRequest("/api/withdraw", {
+      coins,
+      payout_method: payoutMethod,
+      payout_details: details,
+      network: payoutMethod === "USDT" ? usdtNetwork : null
+    });
 
     withdrawMessage.textContent = "Request submitted. Request ID: " +
       result.withdrawal_id + ". Amount: $" +
       (coins / COINS_PER_USD).toFixed(2) + ". Status: Pending.";
 
     withdrawCoins.value = "";
-    upiInput.value = "";
+    payoutDetailsInput.value = "";
     await refreshBalance();
     refreshWithdrawProgress();
   } catch (error) {
@@ -1049,6 +1182,18 @@ adButton.addEventListener("click", watchAd);
 checkinButton.addEventListener("click", claimCheckin);
 withdrawForm.addEventListener("submit", submitWithdrawal);
 withdrawCoins.addEventListener("input", updateWithdrawalEstimate);
+methodButtons.forEach(function (button) {
+  button.addEventListener("click", function () {
+    payoutMethod = button.dataset.method;
+    updatePayoutMethodUI();
+  });
+});
+networkButtons.forEach(function (button) {
+  button.addEventListener("click", function () {
+    usdtNetwork = button.dataset.network;
+    updatePayoutMethodUI();
+  });
+});
 
 answerInput.addEventListener("keydown", event => {
   if (event.key === "Enter") {
